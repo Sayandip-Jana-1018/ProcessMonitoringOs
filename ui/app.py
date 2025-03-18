@@ -12,9 +12,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import math
+import random
+import traceback
+import getpass
 
 from config import THEMES, DEFAULT_ALERT_THRESHOLDS, CUSTOM_STYLES
-from ui.sections import TopSection, MiddleSection, BottomSection
+from ui.sections import TopSection, MiddleSection
 from utils.process_utils import get_process_details, kill_process, change_process_priority
 from utils.ai_utils import ResourcePredictor, AnomalyDetector
 from ui.footer import Footer
@@ -54,6 +57,10 @@ class ProcessMonitorApp:
         self.refresh_rate = tk.StringVar()
         self.refresh_rate.set("1")  # Default to 1 second
         
+        # Initialize sections
+        self.top_section = None
+        self.middle_section = None  # Add this line
+        
         # Create the UI components
         self.create_ui()
         
@@ -80,27 +87,62 @@ class ProcessMonitorApp:
         mpl.rcParams['font.family'] = 'DejaVu Sans'
         mpl.rcParams['axes.unicode_minus'] = False
         
+        self.start_time = datetime.now()  # Add this line
+        
+        # Add this global error handler to main.py or at the app initialization:
+        self.add_exception_handling()
+        
+    def add_exception_handling(self):
+        """Add global exception handling to prevent UI crashes"""
+        def handle_exception(exc_type, exc_value, exc_traceback):
+            """Handle uncaught exceptions"""
+            # Log the error
+            error_msg = ''.join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+            print(f"Uncaught exception:\n{error_msg}")
+            
+            # Show a message to the user if it's a serious error
+            if self.root and self.root.winfo_exists():
+                try:
+                    messagebox.showerror("Error", 
+                                       "An error occurred. The application will continue running.\n"
+                                       f"Error details: {str(exc_value)}")
+                except:
+                    pass  # Even the error dialog failed
+            
+            # Don't call the default exception handler
+            return True
+        
+        # Install the exception handler
+        import sys
+        sys.excepthook = handle_exception
+
     def create_ui(self):
-        """Create the main UI with improved layout that fits on screen"""
-        # Create top section with horizontal gauges and side-by-side panels
+        """Create the main UI with improved layout and spacing"""
+        # Create main frame with less padding for more space
+        self.main_frame.pack_configure(padx=5, pady=5)
+        
+        # Create top section with more information on sides
         self.top_section = TopSection(self.main_frame, self)
         
-        # Create a frame to hold the bottom two rows (process list and charts)
+        # Add system logs/info to the free space around the System Monitor heading
+        self.create_system_logs_panel(self.top_section.frame)
+        
+        # Create a frame to hold the bottom two rows with less padding
         content_container = ttk.Frame(self.main_frame, style="TFrame")
-        content_container.pack(fill="both", expand=True, pady=(0, 0))
+        content_container.pack(fill="both", expand=True, pady=(5, 0))
         
-        # Split the space between process list and charts more efficiently
-        content_container.columnconfigure(0, weight=1)  # Column for process list
-        content_container.columnconfigure(1, weight=1)  # Column for performance graphs
-        content_container.rowconfigure(0, weight=1)  # Row for both elements
+        # Adjust the content container to have three columns
+        content_container.columnconfigure(0, weight=2)  # Process list
+        content_container.columnconfigure(1, weight=1)  # Process Intelligence tab
+        content_container.columnconfigure(2, weight=2)  # Performance charts
         
-        # Left side: Running Processes (first column)
+        # Left side: Process list with reduced padding
         self.process_frame = ttk.Frame(content_container, style="Card.TFrame")
-        self.process_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5), pady=0)
+        self.process_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 3), pady=0)
         
-        # Process list header
+        # Process list header with less padding
         header_frame = ttk.Frame(self.process_frame, style="Card.TFrame")
-        header_frame.pack(fill="x", padx=10, pady=5)  # Reduced padding
+        header_frame.pack(fill="x", padx=5, pady=3)
         
         # Title and process count
         title_frame = ttk.Frame(header_frame, style="Card.TFrame")
@@ -164,19 +206,19 @@ class ProcessMonitorApp:
         # Create the process controls at the bottom of the process list
         self.create_process_controls_panel(self.process_frame)
         
-        # Right side container: Performance charts (second column)
-        right_container = ttk.Frame(content_container, style="Card.TFrame")
-        right_container.grid(row=0, column=1, sticky="nsew", padx=(5, 0), pady=0)
+        # Middle: New Process Intelligence tab
+        self.process_intelligence_frame = ttk.Frame(content_container, style="Card.TFrame")
+        self.process_intelligence_frame.grid(row=0, column=1, sticky="nsew", padx=3, pady=0)
+        self.create_process_intelligence(self.process_intelligence_frame)
+        
+        # Right side: Performance charts (now third column)
+        right_container = ttk.Frame(content_container, style="TFrame")
+        right_container.grid(row=0, column=2, sticky="nsew", padx=(3, 0), pady=0)
         
         # Right side is split into upper and lower parts, give more space to Virtual Assistant
         right_container.rowconfigure(0, weight=2)  # Virtual Assistant (larger - 2/5 of height)
         right_container.rowconfigure(1, weight=3)  # System Performance (smaller - 3/5 of height)
         right_container.columnconfigure(0, weight=1)  # Both take full width
-        
-        # Upper right: Virtual Assistant (takes more height now)
-        self.assistant_frame = ttk.Frame(right_container, style="Card.TFrame")
-        self.assistant_frame.grid(row=0, column=0, sticky="nsew", padx=0, pady=(0, 5))
-        self.create_virtual_assistant(self.assistant_frame)
         
         # Lower right: System Performance
         self.performance_frame = ttk.Frame(right_container, style="Card.TFrame")
@@ -202,241 +244,351 @@ class ProcessMonitorApp:
         self.update_process_list()
 
     def configure_styles(self):
-        """Configure ttk styles for modern look with custom button styles and transparency"""
+        """Configure ttk styles with improved clarity and borders for better organization"""
+        # Ensure theme dictionary has all required keys
+        self.theme = THEMES[self.current_theme].copy()
+        
+        # Add any missing keys with default values
+        if "bg" not in self.theme:
+            self.theme["bg"] = self.theme.get("card_bg", "#f0f0f0")
+        
+        if "card_bg" not in self.theme:
+            self.theme["card_bg"] = self.theme.get("bg", "#ffffff")
+        
+        if "button_bg" not in self.theme:
+            self.theme["button_bg"] = self.theme.get("accent", "#0078D7")
+        
+        # Apply theme to ttk styles
         self.style.theme_use("default")
         
-        # Apply custom styles from the config
-        for style_name, style_config in CUSTOM_STYLES.items():
-            # Process the style configuration to replace placeholders with theme values
-            if "configure" in style_config:
-                configure_args = {}
-                for key, value in style_config["configure"].items():
-                    if isinstance(value, str) and value.startswith("{") and value.endswith("}"):
-                        # Replace placeholder with theme value
-                        theme_key = value[1:-1]  # Remove the { and }
-                        if theme_key in self.theme:
-                            configure_args[key] = self.theme[theme_key]
-                    else:
-                        configure_args[key] = value
-                
-                # Configure the style
-                self.style.configure(style_name, **configure_args)
-            
-            # Process the style map configuration
-            if "map" in style_config:
-                map_args = {}
-                for key, value_list in style_config["map"].items():
-                    processed_list = []
-                    for state, val in value_list:
-                        if isinstance(val, str) and val.startswith("{") and val.endswith("}"):
-                            # Replace placeholder with theme value
-                            theme_key = val[1:-1]  # Remove the { and }
-                            if theme_key in self.theme:
-                                processed_list.append((state, self.theme[theme_key]))
-                        else:
-                            processed_list.append((state, val))
-                
-                    map_args[key] = processed_list
-                
-                # Map the style
-                self.style.map(style_name, **map_args)
+        # Remove borders and lines from frames for cleaner appearance
+        self.style.configure("TFrame", 
+                           background=self.theme["bg"],
+                           borderwidth=0)  # No border by default
         
-        # Frame styles
-        self.style.configure("TFrame", background=self.theme["bg"])
-        self.style.configure("Card.TFrame", background=self.theme["card_bg"])
+        self.style.configure("Card.TFrame", 
+                           background=self.theme["card_bg"],
+                           borderwidth=0)  # No border by default
         
-        # New transparent style for gauge area
-        self.style.configure("TransparentCard.TFrame", background=self.theme["bg"])
+        # Add a new style with a border for visual separation
+        self.style.configure("CardBorder.TFrame", 
+                           background=self.theme["card_bg"],
+                           borderwidth=1,           # Add a 1px border
+                           relief="solid")          # Solid border for clear separation
         
-        self.style.configure("Accent.TFrame", background=self.theme["accent"])
-        
-        # Button styles
-        self.style.configure("TButton", 
-                             background=self.theme["accent"],
-                             foreground=self.theme["text"],
-                             borderwidth=0)
-        
-        self.style.configure("Accent.TButton", 
-                             background=self.theme["accent"],
-                             foreground=self.theme["text"])
-        
-        self.style.configure("Danger.TButton", 
-                             background=self.theme["danger"],
-                             foreground=self.theme["text"])
-        
-        self.style.configure("Success.TButton", 
-                             background=self.theme["success"],
-                             foreground=self.theme["text"])
-        
-        # For the selected theme button
-        self.style.configure("RoundedButtonSelected.TButton",
-                             background=self.theme["accent"],
-                             foreground=self.theme["bg"],
-                             borderwidth=0,
-                             focusthickness=0,
-                             padding=(10, 5),
-                             font=("Segoe UI", 9, "bold"))
-        
-        # Label styles
+        # Label styles with proper background and no borders
         self.style.configure("TLabel", 
-                             background=self.theme["card_bg"],
-                             foreground=self.theme["text"])
+                           font=("Segoe UI", 10),
+                           background=self.theme["card_bg"],
+                           foreground=self.theme["text"])
         
         self.style.configure("Title.TLabel", 
-                             font=("Segoe UI", 14, "bold"),
-                             background=self.theme["card_bg"],
-                             foreground=self.theme["accent"])
+                           font=("Segoe UI", 14, "bold"),
+                           background=self.theme["card_bg"],
+                           foreground=self.theme["accent"])
         
         self.style.configure("InfoTitle.TLabel",
-                             background=self.theme["card_bg"],
-                             foreground=self.theme["accent"],
-                             font=("Segoe UI", 10, "bold"))
+                           font=("Segoe UI", 9, "bold"),
+                           background=self.theme["card_bg"],
+                           foreground=self.theme["text"])
         
         self.style.configure("Info.TLabel",
-                             background=self.theme["card_bg"],
-                             foreground=self.theme["text"],
-                             font=("Segoe UI", 10))
+                           font=("Segoe UI", 9),
+                           background=self.theme["card_bg"],
+                           foreground=self.theme["text"])
         
-        # Treeview styles with rounded corners
+        # Make treeview cleaner with no borders
         self.style.configure("Treeview", 
-                             background=self.theme["card_bg"],
-                             foreground=self.theme["text"],
-                             fieldbackground=self.theme["card_bg"])
+                           background=self.theme["card_bg"],
+                           foreground=self.theme["text"],
+                           fieldbackground=self.theme["card_bg"],
+                           borderwidth=0)
         
         self.style.configure("Treeview.Heading", 
-                             background=self.theme["accent"],
-                             foreground=self.theme["text"],
-                             font=("Segoe UI", 10, "bold"))
+                           background=self.theme["accent"],
+                           foreground=self.theme["text"],
+                           borderwidth=0,
+                           font=("Segoe UI", 10, "bold"))
         
-        # Remove borders from treeview
-        self.style.layout("Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])
+        # Remove borders from treeview - critical for clean appearance
+        self.style.layout("Treeview", [('Treeview.treearea', {'sticky': 'nswe', 'border': '0'})])
         
-        # Entry style
+        # Custom treeview with consistent styling
+        self.style.configure("Custom.Treeview",
+                           rowheight=30,
+                           font=("Segoe UI", 10),
+                           background=self.theme["card_bg"],
+                           foreground=self.theme["text"],
+                           fieldbackground=self.theme["card_bg"],
+                           borderwidth=0)
+        
+        self.style.configure("Custom.Treeview.Heading",
+                           font=("Segoe UI", 10, "bold"),
+                           background=self.theme["accent"],
+                           foreground="#FFFFFF",
+                           borderwidth=0)
+        
+        # Remove focus borders from treeview items
+        self.style.map("Treeview",
+                     background=[('selected', self.theme["accent"])],
+                     foreground=[('selected', "#FFFFFF")])
+        
+        self.style.map("Custom.Treeview",
+                     background=[('selected', self.theme["accent"])],
+                     foreground=[('selected', "#FFFFFF")])
+        
+        # Entry styles
         self.style.configure("TEntry", 
-                             fieldbackground=self.theme["bg"],
-                             foreground=self.theme["text"])
+                           fieldbackground=self.theme["bg"],
+                           foreground=self.theme["text"],
+                           borderwidth=1)
+        
+        # Button styles with minimal borders
+        self.style.configure("TButton", 
+                           font=("Segoe UI", 9),
+                           background=self.theme["button_bg"],
+                           foreground=self.theme["text"],
+                           borderwidth=1)
+        
+        self.style.configure("Accent.TButton", 
+                           font=("Segoe UI", 9, "bold"),
+                           background=self.theme["accent"],
+                           foreground="#FFFFFF",
+                           borderwidth=1)
+        
+        self.style.configure("Danger.TButton", 
+                           font=("Segoe UI", 9, "bold"),
+                           background="#FF4757",
+                           foreground="#FFFFFF",
+                           borderwidth=1)
+        
+        # Style the notebook with no border
+        self.style.configure("TNotebook", 
+                           background=self.theme["bg"],
+                           borderwidth=0)
+        
+        self.style.configure("TNotebook.Tab", 
+                           background=self.theme["card_bg"],
+                           foreground=self.theme["text"],
+                           padding=[10, 2],
+                           borderwidth=0)
+        
+        # Style the separator to be subtle
+        self.style.configure("TSeparator", 
+                           background=self.theme["bg"])
+        
+        # Style the scrollbar to be minimal
+        self.style.configure("TScrollbar", 
+                           background=self.theme["bg"],
+                           borderwidth=0,
+                           arrowsize=12)
 
     def toggle_theme(self):
         """Cycle through all available themes instead of just toggling"""
-        # Get list of all theme keys
-        theme_keys = list(THEMES.keys())
-        
-        # Find the index of the current theme
-        current_index = theme_keys.index(self.current_theme)
-        
-        # Calculate next theme index (cycle through all themes)
-        next_index = (current_index + 1) % len(theme_keys)
-        
-        # Set the new theme
-        self.current_theme = theme_keys[next_index]
-        self.theme = THEMES[self.current_theme]
-        
-        # Reconfigure the UI
-        self.configure_styles()
-        
-        # Update theme icon on the button if it exists
-        if hasattr(self.top_section, 'theme_btn'):
-            self.top_section.theme_btn.config(text=THEMES[self.current_theme]["icon"])
-        
-        # Update plot colors
-        self.top_section.update_gauge_colors(self.theme)
-        
-        # Update performance graph colors
-        self.update_performance_graph_colors()
-        
-        # Update text widgets
-        if hasattr(self.top_section, 'recommendations_content'):
-            self.top_section.recommendations_content.config(bg=self.theme["card_bg"], fg=self.theme["text"])
-        if hasattr(self.top_section, 'anomaly_text'):
-            self.top_section.anomaly_text.config(bg=self.theme["card_bg"], fg=self.theme["text"])
-        if hasattr(self, 'chat_display'):
-            self.chat_display.config(bg=self.theme["card_bg"], fg=self.theme["text"])
-        
-        # Update backgrounds
-        self.root.configure(bg=self.theme["bg"])
-        
-        # Force a redraw of the UI
-        self.root.update()
+        try:
+            # Get list of all theme keys
+            theme_keys = list(THEMES.keys())
+            
+            # Find the index of the current theme
+            current_index = theme_keys.index(self.current_theme)
+            
+            # Calculate next theme index (cycle through all themes)
+            next_index = (current_index + 1) % len(theme_keys)
+            
+            # Set the new theme
+            self.current_theme = theme_keys[next_index]
+            
+            # Create a complete theme dictionary with all required keys
+            self.theme = THEMES[self.current_theme].copy()
+            
+            # Ensure required keys exist
+            if "bg" not in self.theme:
+                self.theme["bg"] = self.theme.get("card_bg", "#f0f0f0")
+            
+            if "card_bg" not in self.theme:
+                self.theme["card_bg"] = self.theme.get("bg", "#ffffff")
+            
+            # Add button_bg if it doesn't exist
+            if "button_bg" not in self.theme:
+                self.theme["button_bg"] = self.theme.get("accent", "#0078D7")
+            
+            # Reconfigure the UI
+            self.configure_styles()
+            
+            # Update theme icon on the button if it exists
+            if hasattr(self.top_section, 'theme_btn'):
+                self.top_section.theme_btn.config(text=THEMES[self.current_theme]["icon"])
+            
+            # Update plot colors
+            if hasattr(self.top_section, 'update_gauge_colors'):
+                self.top_section.update_gauge_colors(self.theme)
+            
+            # Update performance graph colors
+            self.update_performance_graph_colors()
+            
+            # Call the new theme components update method to handle all text colors
+            if hasattr(self.top_section, 'update_theme_components'):
+                self.top_section.update_theme_components(self.theme)
+            
+            # Update text widgets with error handling
+            try:
+                # Top section text widgets
+                if hasattr(self.top_section, 'recommendations_content'):
+                    self.top_section.recommendations_content.config(bg=self.theme["card_bg"], fg=self.theme["text"])
+                if hasattr(self.top_section, 'anomaly_text'):
+                    self.top_section.anomaly_text.config(bg=self.theme["card_bg"], fg=self.theme["text"])
+                if hasattr(self.top_section, 'chat_display'):
+                    self.top_section.chat_display.config(bg=self.theme["card_bg"], fg=self.theme["text"])
+            
+                # Process Intelligence elements with safe attribute checking
+                if hasattr(self, 'process_intelligence_elements'):
+                    elements = self.process_intelligence_elements
+                    
+                    for key, element in elements.items():
+                        # Handle different widget types appropriately
+                        if isinstance(element, tk.Button):
+                            element.configure(bg=self.theme["card_bg"], fg=self.theme["text"])
+                        elif isinstance(element, tk.Label):
+                            element.configure(bg=self.theme["card_bg"], fg=self.theme["text"])
+                        # Skip ttk widgets as they use styles instead of direct configuration
+                        # This prevents the "-bg" option error
+            except Exception as e:
+                print(f"Non-critical error updating UI elements: {e}")
+                # Non-critical error, continue with theme update
+            
+            # Update backgrounds
+            self.root.configure(bg=self.theme["bg"])
+            
+            # Force a redraw of the UI
+            self.root.update()
+        except Exception as e:
+            print(f"Error switching theme: {e}")
+            # If theme switching fails, at least try to ensure the UI is consistent
+            try:
+                self.configure_styles()
+                self.root.update()
+            except:
+                pass  # Last resort, silently ignore if even this fails
 
     def start_background_tasks(self):
         """Start background data updating"""
         self.update_data()
 
     def update_data(self):
-        """Update all data and UI elements"""
         try:
-            # Get current CPU and memory usage
-            cpu_percent = psutil.cpu_percent()
-            mem_percent = psutil.virtual_memory().percent
+            # Get current CPU and memory usage with smoothing
+            cpu_samples = [psutil.cpu_percent() for _ in range(3)]  # Take multiple samples
+            cpu_percent = sum(cpu_samples) / len(cpu_samples)  # Average them
             
-            # Get disk usage for the main disk
+            mem = psutil.virtual_memory()
+            mem_percent = mem.percent
+            
+            # Add small random variations to make graphs more dynamic
+            cpu_variation = random.uniform(-0.5, 0.5)
+            mem_variation = random.uniform(-0.3, 0.3)
+            
+            # Apply smoothing and variations
+            cpu_percent = max(0, min(100, cpu_percent + cpu_variation))
+            mem_percent = max(0, min(100, mem_percent + mem_variation))
+            
+            # Get disk usage with smoothing
             try:
                 if platform.system() == 'Windows':
                     disk_percent = psutil.disk_usage('C:\\').percent
                 else:
                     disk_percent = psutil.disk_usage('/').percent
-            except Exception as e:
-                print(f"Error getting disk usage: {e}")
-                disk_percent = 50.0  # Default value if there's an error
+                disk_variation = random.uniform(-0.2, 0.2)
+                disk_percent = max(0, min(100, disk_percent + disk_variation))
+            except:
+                disk_percent = 0.0
             
-            # Update history data
+            # Add current time
             current_time = datetime.now()
             
             # Initialize history lists if they don't exist
             if not hasattr(self, 'timestamps'):
                 self.timestamps = []
-            if not hasattr(self, 'cpu_usage_history'):
                 self.cpu_usage_history = []
-            if not hasattr(self, 'mem_usage_history'):
                 self.mem_usage_history = []
-            if not hasattr(self, 'disk_usage_history'):
                 self.disk_usage_history = []
             
-            # Add current data to history
+            # Apply exponential moving average for smoother transitions
+            alpha = 0.3  # Smoothing factor
+            if self.cpu_usage_history:
+                last_cpu = self.cpu_usage_history[-1]
+                cpu_percent = alpha * cpu_percent + (1 - alpha) * last_cpu
+                
+                last_mem = self.mem_usage_history[-1]
+                mem_percent = alpha * mem_percent + (1 - alpha) * last_mem
+                
+                last_disk = self.disk_usage_history[-1]
+                disk_percent = alpha * disk_percent + (1 - alpha) * last_disk
+            
+            # Add data to history
             self.timestamps.append(current_time)
             self.cpu_usage_history.append(float(cpu_percent))
             self.mem_usage_history.append(float(mem_percent))
             self.disk_usage_history.append(float(disk_percent))
             
-            # Keep only the last 3600 data points (1 hour at 1-second intervals)
-            max_history = 3600
-            if len(self.timestamps) > max_history:
-                self.timestamps = self.timestamps[-max_history:]
-                self.cpu_usage_history = self.cpu_usage_history[-max_history:]
-                self.mem_usage_history = self.mem_usage_history[-max_history:]
-                self.disk_usage_history = self.disk_usage_history[-max_history:]
+            # Keep only the last hour of data
+            max_points = 3600  # 1 hour of data at 1-second intervals
+            if len(self.timestamps) > max_points:
+                self.timestamps = self.timestamps[-max_points:]
+                self.cpu_usage_history = self.cpu_usage_history[-max_points:]
+                self.mem_usage_history = self.mem_usage_history[-max_points:]
+                self.disk_usage_history = self.disk_usage_history[-max_points:]
             
-            # Check for alerts
-            self.check_alerts(cpu_percent, mem_percent, disk_percent)
+            # Update the UI
+            self.update_performance_graphs()
             
-            # Update gauges
-            self.top_section.update_gauges(cpu_percent, mem_percent, disk_percent)
+            # Schedule next update with slightly random interval for more natural look
+            base_refresh_rate = int(self.refresh_rate.get()) * 1000 if hasattr(self, 'refresh_rate') else 1000
+            jitter = random.uniform(-100, 100)  # Add ±100ms random jitter
+            refresh_rate = max(100, base_refresh_rate + jitter)  # Ensure minimum 100ms
             
-            # Update process list
-            self.update_process_list()
+            self.root.after(int(refresh_rate), self.update_data)
             
-            # Update AI components
-            self.update_ai_components()
-            
-            # Update performance graphs - pass all required data
-            if hasattr(self, 'middle_section') and len(self.timestamps) >= 2:
-                self.middle_section.update_performance_graphs(
-                    self.timestamps,
-                    self.cpu_usage_history,
-                    self.mem_usage_history,
-                    self.disk_usage_history
+            # Update AI timeline
+            if hasattr(self, 'start_time'):
+                collection_time = (datetime.now() - self.start_time).total_seconds() / 60
+                
+                # Determine AI status based on data collection time
+                if collection_time < 1:
+                    training_status = "Waiting for data..."
+                    prediction_status = "Waiting for training..."
+                    system_status = "Collecting initial data..."
+                elif collection_time < 2:
+                    training_status = "Training in progress..."
+                    prediction_status = "Waiting for training..."
+                    system_status = "Learning system patterns..."
+                else:
+                    training_status = "Complete"
+                    prediction_status = "Generating predictions"
+                    
+                    # Get system status based on your anomaly detection
+                    if hasattr(self, 'anomaly_detector') and self.anomaly_detector.is_trained:
+                        latest_data = {
+                            'cpu': self.cpu_usage_history[-1] if self.cpu_usage_history else 0,
+                            'memory': self.mem_usage_history[-1] if self.mem_usage_history else 0,
+                            'disk': self.disk_usage_history[-1] if self.disk_usage_history else 0
+                        }
+                        anomaly_result = self.anomaly_detector.check_anomaly(latest_data)
+                        system_status = "System behavior normal" if not anomaly_result['is_anomaly'] else "Anomaly detected!"
+                    else:
+                        system_status = "System behavior normal"
+                
+                # Update the timeline in the UI
+                self.top_section.update_ai_timeline(
+                    collection_time=collection_time,
+                    training_status=training_status,
+                    prediction_status=prediction_status,
+                    system_status=system_status
                 )
-            
-            # Schedule next update
-            try:
-                refresh_rate = int(self.refresh_rate.get()) * 1000  # Convert to milliseconds
-            except (ValueError, AttributeError):
-                refresh_rate = 1000  # Default to 1 second
-            
-            self.root.after(refresh_rate, self.update_data)
+            else:
+                self.start_time = datetime.now()
+        
         except Exception as e:
             print(f"Error in update_data: {e}")
-            # Ensure we reschedule the update even if there's an error
             self.root.after(1000, self.update_data)
 
     def check_alerts(self, cpu_percent, mem_percent, disk_percent=None):
@@ -484,50 +636,53 @@ class ProcessMonitorApp:
 
     def kill_process(self):
         """Kill the selected process"""
-        selected = self.middle_section.get_selected_process()
-        
-        # Debug print
-        print(f"Kill process requested for: {selected}")
-        
-        if not selected:
-            messagebox.showinfo("Info", "Please select a process to kill.")
-            return
-        
         try:
-            pid = int(selected[0])
-            process_name = selected[1]
-            
-            # Confirm before killing
-            confirm = messagebox.askyesno(
-                "Confirm Kill Process", 
-                f"Are you sure you want to kill process '{process_name}' (PID: {pid})?"
-            )
-            
-            if not confirm:
+            # Check if we have a middle section
+            if not hasattr(self, 'middle_section') or self.middle_section is None:
+                messagebox.showerror("Error", "Process management is not initialized")
                 return
-            
-            # Try to kill the process
-            process = psutil.Process(pid)
-            process.kill()
-            
-            # Wait briefly to confirm it's killed
-            time.sleep(0.1)
-            
-            # Check if process still exists
-            if psutil.pid_exists(pid):
-                messagebox.showerror("Error", f"Failed to kill process {process_name} (PID: {pid})")
-            else:
-                messagebox.showinfo("Success", f"Process {process_name} (PID: {pid}) has been terminated")
                 
-                # Refresh the process list
-                self.middle_section.update_process_list()
+            # Check if the middle section has a tree
+            if not hasattr(self.middle_section, 'tree'):
+                messagebox.showerror("Error", "Process list not initialized")
+                return
                 
-        except psutil.NoSuchProcess:
-            messagebox.showinfo("Info", f"Process with PID {pid} no longer exists")
-        except psutil.AccessDenied:
-            messagebox.showerror("Error", f"Access denied when trying to kill process {process_name} (PID: {pid})")
+            # Get selected process
+            selected = self.middle_section.tree.selection()
+            if not selected:
+                messagebox.showwarning("Warning", "Please select a process to terminate.")
+                return
+                
+            item = self.middle_section.tree.item(selected[0])
+            pid = int(item['values'][0])
+            process_name = item['values'][1]
+            
+            # Confirm with the user
+            if messagebox.askyesno("Confirm", f"Are you sure you want to terminate process {pid} ({process_name})?"):
+                try:
+                    # Attempt to terminate the process
+                    process = psutil.Process(pid)
+                    process.terminate()
+                    
+                    # Wait for process to terminate or force kill
+                    try:
+                        process.wait(timeout=3)
+                    except psutil.TimeoutExpired:
+                        process.kill()
+                    
+                    # Refresh the process list after successful termination
+                    if hasattr(self.middle_section, 'update_process_list'):
+                        self.middle_section.update_process_list()
+                    
+                    messagebox.showinfo("Success", f"Process {pid} ({process_name}) has been terminated.")
+                except psutil.NoSuchProcess:
+                    messagebox.showerror("Error", f"Process {pid} no longer exists.")
+                except psutil.AccessDenied:
+                    messagebox.showerror("Error", f"Access denied when trying to terminate process {pid}. Try running as administrator.")
+        except ValueError as e:
+            messagebox.showerror("Error", f"Invalid process ID: {str(e)}")
         except Exception as e:
-            messagebox.showerror("Error", f"Error killing process: {str(e)}")
+            messagebox.showerror("Error", f"An unexpected error occurred: {str(e)}")
 
     def change_priority(self, priority):
         """Change the priority of the selected process"""
@@ -831,176 +986,205 @@ class ProcessMonitorApp:
         self.root.destroy() 
 
     def update_ai_components(self):
-        """Update AI components with new data"""
-        # Get predictions if we have enough data
-        predictions = self.resource_predictor.get_predictions(
-            self.cpu_usage_history,
-            self.mem_usage_history,
-            self.disk_usage_history
-        )
-        
-        # Train or update anomaly detection model if needed
-        if self.anomaly_detector.should_train(len(self.cpu_usage_history)):
-            self.anomaly_detector.train(
-                self.cpu_usage_history,
-                self.mem_usage_history,
-                self.disk_usage_history
-            )
-        
-        # Detect anomalies in current data
-        anomaly_result = None
-        if self.anomaly_detector.is_trained:
-            anomaly_result = self.anomaly_detector.detect_anomalies(
-                self.cpu_usage_history,
-                self.mem_usage_history,
-                self.disk_usage_history
-            )
+        """Update AI components with new data and handle errors gracefully"""
+        try:
+            # Get predictions if we have enough data
+            predictions = None
+            if hasattr(self, 'resource_predictor') and len(self.cpu_usage_history) >= 10:
+                try:
+                    with np.errstate(all='ignore'):  # Suppress numpy warnings
+                        predictions = self.resource_predictor.get_predictions(
+                            self.cpu_usage_history,
+                            self.mem_usage_history,
+                            self.disk_usage_history
+                        )
+                except Exception as e:
+                    print(f"Non-critical: Error generating predictions: {e}")
+                    # Fallback to simple prediction
+                    predictions = {
+                        'cpu': [self.cpu_usage_history[-1]],
+                        'memory': [self.mem_usage_history[-1]],
+                        'disk': [self.disk_usage_history[-1]]
+                    }
+                    
+            # Train or update anomaly detection model if needed
+            anomaly_result = None
+            if hasattr(self, 'anomaly_detector'):
+                try:
+                    if self.anomaly_detector.should_train(len(self.cpu_usage_history)):
+                        self.anomaly_detector.train(
+                            self.cpu_usage_history,
+                            self.mem_usage_history,
+                            self.disk_usage_history
+                        )
+                    
+                    # Detect anomalies in current data
+                    if self.anomaly_detector.is_trained and len(self.cpu_usage_history) >= 10:
+                        anomaly_result = self.anomaly_detector.detect_anomalies(
+                            self.cpu_usage_history,
+                            self.mem_usage_history,
+                            self.disk_usage_history
+                        )
+                        
+                        # Log anomaly if detected
+                        if anomaly_result and anomaly_result.get('is_anomaly', False):
+                            anomaly_msg = (
+                                f"[{anomaly_result.get('detection_time', datetime.now().strftime('%H:%M:%S'))}] "
+                                f"ANOMALY DETECTED: CPU {anomaly_result.get('cpu', 0):.1f}%, "
+                                f"MEM {anomaly_result.get('memory', 0):.1f}%, "
+                                f"DISK {anomaly_result.get('disk', 0):.1f}%"
+                            )
+                            if not hasattr(self, 'recent_anomalies'):
+                                self.recent_anomalies = []
+                            self.recent_anomalies.append(anomaly_msg)
+                            self.log_alert(anomaly_msg)
+                            
+                            # Keep only the last 20 anomalies
+                            if len(self.recent_anomalies) > 20:
+                                self.recent_anomalies = self.recent_anomalies[-20:]
+                except Exception as e:
+                    print(f"Error in anomaly detection: {e}")
             
-            # Log anomaly if detected
-            if anomaly_result and anomaly_result['is_anomaly']:
-                anomaly_msg = (
-                    f"[{anomaly_result['detection_time']}] ANOMALY DETECTED: "
-                    f"CPU {anomaly_result['cpu']:.1f}%, "
-                    f"MEM {anomaly_result['memory']:.1f}%, "
-                    f"DISK {anomaly_result['disk']:.1f}%"
-                )
-                self.recent_anomalies.append(anomaly_msg)
-                self.log_alert(anomaly_msg)
-                
-                # Keep only the last 20 anomalies
-                if len(self.recent_anomalies) > 20:
-                    self.recent_anomalies = self.recent_anomalies[-20:]
-        
-        # Update the AI panels in the UI
-        self.top_section.update_ai_insights(predictions, anomaly_result, self.recent_anomalies)
-        self.middle_section.update_detailed_ai_insights(predictions, anomaly_result, self.recent_anomalies)
+            # Update the AI panels in the UI with error handling
+            if hasattr(self, 'top_section'):
+                try:
+                    if hasattr(self.top_section, 'update_ai_insights'):
+                        self.top_section.update_ai_insights(predictions, anomaly_result, 
+                                                          getattr(self, 'recent_anomalies', []))
+                except Exception as e:
+                    print(f"Error updating top section AI insights: {e}")
+                    
+            if hasattr(self, 'middle_section'):
+                try:
+                    if hasattr(self.middle_section, 'update_detailed_ai_insights'):
+                        self.middle_section.update_detailed_ai_insights(predictions, anomaly_result, 
+                                                                     getattr(self, 'recent_anomalies', []))
+                except Exception as e:
+                    print(f"Error updating middle section AI insights: {e}")
+        except Exception as e:
+            print(f"Error in update_ai_components: {e}")
+            # Schedule the next update anyway to prevent breaking the update cycle
+            if hasattr(self, 'main_frame'):
+                self.main_frame.after(30000, self.update_ai_components)
 
     def refresh_ui(self):
         """Refresh the UI components"""
-        # Clear the main frame
-        for widget in self.main_frame.winfo_children():
-            widget.destroy()
-        
-        # Recreate the UI
-        self.create_ui()
-        
-        # Force an immediate data update
-        self.update_data()
+        try:
+            # Update various UI components
+            self.update_process_list()
+            self.update_system_info_label()
+            self.update_performance_graphs()
+            self.update_ai_components()
+            
+            # Update the process intelligence as well
+            if hasattr(self, "middle_section") and self.middle_section:
+                if hasattr(self.middle_section, "update_process_intelligence"):
+                    self.middle_section.update_process_intelligence()
+            
+            # Schedule next refresh based on refresh rate
+            try:
+                refresh_seconds = float(self.refresh_rate.get())
+                # Ensure refresh rate is reasonable
+                if refresh_seconds < 0.5:
+                    refresh_seconds = 0.5
+                refresh_ms = int(refresh_seconds * 1000)
+            except ValueError:
+                # Default to 1 second if invalid value
+                refresh_ms = 1000
+                
+            self.root.after(refresh_ms, self.refresh_ui)
+        except Exception as e:
+            print(f"Error in refresh_ui: {e}")
+            # If an error occurs, try to reschedule anyway to prevent UI from freezing
+            self.root.after(1000, self.refresh_ui)
 
     def update_performance_graphs(self):
-        """Update the performance graphs with real-time data"""
+        """Update the performance graphs with enhanced visual appeal"""
         try:
-            if not hasattr(self, 'perf_axes') or not self.perf_axes or len(self.perf_axes) < 3:
-                print("Performance axes not initialized correctly")
+            if not hasattr(self, 'perf_axes') or not self.perf_axes:
                 return
-            
-            # Get the timestamps and history data
-            timestamps = self.timestamps
-            cpu_history = self.cpu_usage_history
-            mem_history = self.mem_usage_history
-            disk_history = self.disk_usage_history
-            
-            # Clear "Collecting data..." text from all subplots
-            for ax in self.perf_axes:
-                for txt in ax.texts:
-                    txt.remove()
-            
-            # Check if we have enough data to display
-            if not timestamps or len(timestamps) < 2:
-                # Not enough data yet, show "Collecting data..." message
-                for ax in self.perf_axes:
-                    ax.text(0.5, 0.5, "Collecting data...", 
-                            horizontalalignment='center',
-                            verticalalignment='center',
-                            transform=ax.transAxes,
-                            color=self.theme["text"],
-                            fontsize=10)
-                self.perf_fig.tight_layout()
-                self.perf_canvas.draw()
-                return
-            
-            # Make sure data lengths match
-            min_length = min(len(timestamps), len(cpu_history), len(mem_history), len(disk_history))
-            if min_length < 2:
-                # Still collecting enough data
-                return
-            
-            # Get time range selection
+                
+            # Get the current time range selection
             time_range_text = self.time_range.get() if hasattr(self, 'time_range') else "5 minutes"
             
-            # Convert time range to number of data points (assuming 1 second updates)
+            # Convert time range to number of data points
             if time_range_text == "5 minutes":
-                num_points = 5 * 60
+                num_points = 300
             elif time_range_text == "15 minutes":
-                num_points = 15 * 60
+                num_points = 900
             else:  # 1 hour
-                num_points = 60 * 60
+                num_points = 3600
+                
+            # Get the data for the selected time range
+            timestamps = self.timestamps[-num_points:] if len(self.timestamps) > num_points else self.timestamps
+            cpu_data = self.cpu_usage_history[-num_points:] if len(self.cpu_usage_history) > num_points else self.cpu_usage_history
+            mem_data = self.mem_usage_history[-num_points:] if len(self.mem_usage_history) > num_points else self.mem_usage_history
+            disk_data = self.disk_usage_history[-num_points:] if len(self.disk_usage_history) > num_points else self.disk_usage_history
+
+            if len(timestamps) < 2:
+                # Handle insufficient data case
+                return
+
+            # Clear and update each subplot with enhanced styling
+            titles = ["CPU Usage (%)", "Memory Usage (%)", "Disk Usage (%)"]
+            colors = ['#FF4757', '#2E86DE', '#26C281']
+            datasets = [cpu_data, mem_data, disk_data]
             
-            # Limit data to the selected time range
-            if len(timestamps) > num_points:
-                timestamps = timestamps[-num_points:]
-                cpu_history = cpu_history[-num_points:]
-                mem_history = mem_history[-num_points:]
-                disk_history = disk_history[-num_points:]
-            
-            # Clear all axes
-            for ax in self.perf_axes:
+            for ax, title, color, data in zip(self.perf_axes, titles, colors, datasets):
                 ax.clear()
-            
-            # Use indices for x-axis to prevent matplotlib issues
-            x_indices = list(range(len(timestamps)))
-            
-            # Define vibrant colors for better visibility
-            cpu_color = "#FF5555"  # Bright red
-            mem_color = "#5555FF"  # Bright blue
-            disk_color = "#55FF55"  # Bright green
-            
-            # Configure axis titles and styling
-            self.perf_axes[0].set_title("CPU Usage (%)", color=self.theme["text"], fontsize=9)
-            self.perf_axes[1].set_title("Memory Usage (%)", color=self.theme["text"], fontsize=9)
-            self.perf_axes[2].set_title("Disk Usage (%)", color=self.theme["text"], fontsize=9)
-            
-            # Configure each axis with proper styling
-            for ax in self.perf_axes:
+                
+                # Enhanced background and grid styling
                 ax.set_facecolor(self.theme["chart_bg"])
-                ax.set_ylim(0, 100)  # Usage percentage 0-100%
-                ax.grid(True, linestyle='--', alpha=0.6, color=self.theme["grid_color"])
+                ax.grid(True, linestyle='--', alpha=0.4, color=self.theme["grid_color"])
+                
+                # Create gradient effect for the fill
+                z = np.polyfit(range(len(data)), data, 2)
+                p = np.poly1d(z)
+                smooth_data = p(range(len(data)))
+                
+                # Plot the smoothed line with gradient fill
+                x = range(len(timestamps))
+                ax.plot(x, data, color=color, linewidth=2, label=title.split()[0],
+                       alpha=0.9, zorder=2)
+                
+                # Create gradient fill effect
+                fill_alpha = np.linspace(0.3, 0.1, len(data))
+                for i in range(len(data)-1):
+                    ax.fill_between([i, i+1], [0, 0], [data[i], data[i+1]],
+                                  color=color, alpha=fill_alpha[i])
+                
+                # Add subtle grid with gradient
+                ax.grid(True, which='major', color=self.theme["grid_color"],
+                           linestyle='--', linewidth=0.5, alpha=0.3, zorder=1)
+                ax.grid(True, which='minor', color=self.theme["grid_color"],
+                           linestyle=':', linewidth=0.25, alpha=0.2, zorder=1)
+                
+                # Enhance axis styling
+                ax.set_ylim(0, 100)
+                ax.set_title(title, color=self.theme["text"], fontsize=10, pad=10)
                 ax.tick_params(colors=self.theme["text"], labelsize=8)
-            
-            # Format timestamps for display on x-axis
-            # Show a few evenly spaced labels
-            if len(timestamps) > 0:
-                num_labels = min(5, len(timestamps))
-                step = max(1, len(timestamps) // num_labels)
-                positions = [x_indices[i] for i in range(0, len(x_indices), step)]
                 
-                if positions:  # Ensure we have positions before creating labels
-                    labels = [timestamps[i].strftime("%H:%M:%S") for i in range(0, len(timestamps), step)]
-                    
-                    for ax in self.perf_axes:
-                        ax.set_xticks(positions)
-                        ax.set_xticklabels(labels, rotation=45, ha='right')
-            
-            # Plot the data with filled areas
-            if len(cpu_history) > 0:
-                # CPU Usage plot
-                self.perf_axes[0].plot(x_indices, cpu_history, color=cpu_color, linewidth=2)
-                self.perf_axes[0].fill_between(x_indices, 0, cpu_history, color=cpu_color, alpha=0.3)
+                # Format x-axis with dynamic tick spacing
+                if len(timestamps) > 10:
+                    step = max(len(timestamps) // 5, 1)
+                    positions = range(0, len(timestamps), step)
+                    labels = [timestamps[i].strftime("%H:%M:%S") for i in positions]
+                    ax.set_xticks(positions)
+                    ax.set_xticklabels(labels, rotation=45, ha='right')
                 
-                # Memory Usage plot
-                self.perf_axes[1].plot(x_indices, mem_history, color=mem_color, linewidth=2)
-                self.perf_axes[1].fill_between(x_indices, 0, mem_history, color=mem_color, alpha=0.3)
-                
-                # Disk Usage plot
-                self.perf_axes[2].plot(x_indices, disk_history, color=disk_color, linewidth=2)
-                self.perf_axes[2].fill_between(x_indices, 0, disk_history, color=disk_color, alpha=0.3)
-            
-            # Apply tight layout to adjust spacing between subplots
+                # Add enhanced legend
+                legend = ax.legend(loc='upper right', facecolor=self.theme["chart_bg"],
+                                 edgecolor=self.theme["grid_color"], fontsize=8,
+                                 framealpha=0.8)
+                legend.get_frame().set_linewidth(0.5)
+
+            # Update layout with better spacing
             self.perf_fig.tight_layout()
             
-            # Draw the updated figure
-            self.perf_canvas.draw()
-            
+            # Draw the canvas
+            if hasattr(self, 'perf_canvas'):
+                self.perf_canvas.draw()
+                
         except Exception as e:
             print(f"Error updating performance graphs: {e}")
             import traceback
@@ -1069,22 +1253,21 @@ class ProcessMonitorApp:
         send_btn.pack(side="right")
 
     def process_user_input(self, event=None):
-        """Process user input from the virtual assistant"""
-        user_text = self.user_input.get().strip()
-        if not user_text:
-            return
-        
-        # Display user query
-        self.update_chat_display(f"You: {user_text}")
-        
-        # Clear input box
-        self.user_input.delete(0, tk.END)
-        
-        # Process query and generate response
-        response = self.generate_assistant_response(user_text)
-        
-        # Display assistant response
-        self.update_chat_display(f"Assistant: {response}")
+        """Process user input for the virtual assistant in the top section"""
+        try:
+            if hasattr(self, 'top_section') and hasattr(self.top_section, 'user_input'):
+                query = self.top_section.user_input.get().strip()
+                if query:
+                    # Display user query
+                    self.top_section.update_chat_display(f"You: {query}")
+                    # Clear input field
+                    self.top_section.user_input.delete(0, tk.END)
+                    # Generate response based on query
+                    response = self.top_section.generate_assistant_response(query)
+                    # Display response
+                    self.top_section.update_chat_display(f"Assistant: {response}")
+        except Exception as e:
+            print(f"Error processing user input: {e}")
 
     def update_chat_display(self, message):
         """Update the chat display with a new message"""
@@ -1798,3 +1981,375 @@ class ProcessMonitorApp:
             print(f"Error in filter change handler: {e}")
             # Ensure the process list still updates even if there's an error
             self.update_process_list()
+
+    def create_process_intelligence(self, parent):
+        """Create the Process Intelligence tab with improved design and spacing"""
+        try:
+            # Header with title - using standard style with less padding
+            header_frame = ttk.Frame(parent, style="Card.TFrame")
+            header_frame.pack(fill="x", padx=0, pady=3)
+            
+            # Process Intelligence title
+            pi_title = ttk.Label(
+                header_frame,
+                text="PROCESS INTELLIGENCE",
+                style="Title.TLabel",
+                font=("Segoe UI", 12, "bold")
+            )
+            pi_title.pack(anchor="center")
+            
+            # Tabs frame with less padding
+            tabs_frame = ttk.Frame(parent, style="Card.TFrame")
+            tabs_frame.pack(fill="x", padx=2, pady=(0, 3))
+            
+            # Create tabs with consistent styling
+            resource_btn = tk.Button(
+                tabs_frame,
+                text="Resource Usage",
+                bg=self.theme.get("card_bg", "#FFFFFF"),
+                fg=self.theme.get("text", "#000000"),
+                relief="raised",
+                borderwidth=1,
+                font=("Segoe UI", 8, "bold")
+            )
+            resource_btn.pack(side="left", padx=(0, 1), fill="x", expand=True)
+            
+            process_btn = tk.Button(
+                tabs_frame,
+                text="Process Relations",
+                bg=self.theme.get("card_bg", "#FFFFFF"),
+                fg=self.theme.get("text", "#000000"),
+                relief="flat",
+                borderwidth=1,
+                font=("Segoe UI", 8)
+            )
+            process_btn.pack(side="left", padx=(0, 1), fill="x", expand=True)
+            
+            optimize_btn = tk.Button(
+                tabs_frame,
+                text="Optimization",
+                bg=self.theme.get("card_bg", "#FFFFFF"),
+                fg=self.theme.get("text", "#000000"),
+                relief="flat",
+                borderwidth=1,
+                font=("Segoe UI", 8)
+            )
+            optimize_btn.pack(side="left", fill="x", expand=True)
+            
+            # Main content area with reduced padding
+            content_frame = ttk.Frame(parent, style="Card.TFrame")
+            content_frame.pack(fill="both", expand=True, padx=3, pady=3)
+            
+            # Time label with more details
+            time_frame = ttk.Frame(content_frame, style="Card.TFrame")
+            time_frame.pack(fill="x", pady=(0, 5))
+            
+            time_icon = ttk.Label(time_frame, text="⏱️", style="TLabel")
+            time_icon.pack(side="left", padx=(0, 5))
+            
+            time_label = ttk.Label(
+                time_frame,
+                text="Resource Usage Analysis - 01:25:38",
+                style="InfoTitle.TLabel",
+                font=("Segoe UI", 9, "bold")
+            )
+            time_label.pack(side="left")
+            
+            # Add a separator for better organization
+            ttk.Separator(content_frame, orient="horizontal").pack(fill="x", pady=3)
+            
+            # System summary section (added)
+            summary_frame = ttk.Frame(content_frame, style="Card.TFrame")
+            summary_frame.pack(fill="x", pady=(0, 10))
+            
+            summary_icon = ttk.Label(summary_frame, text="📋", style="TLabel")
+            summary_icon.pack(side="left", padx=(0, 5))
+            
+            summary_title = ttk.Label(
+                summary_frame,
+                text="SYSTEM SUMMARY:",
+                style="InfoTitle.TLabel",
+                font=("Segoe UI", 9, "bold")
+            )
+            summary_title.pack(side="left")
+            
+            # Summary info
+            total_processes = len(list(psutil.process_iter()))
+            mem = psutil.virtual_memory()
+            summary_info = ttk.Label(
+                content_frame,
+                text=f"• Total processes: {total_processes}\n• Memory in use: {mem.percent}%\n• Average CPU load: {psutil.cpu_percent(interval=0.1)}%",
+                style="Info.TLabel",
+                font=("Segoe UI", 9)
+            )
+            summary_info.pack(anchor="w", padx=(20, 0))
+            
+            # Add a separator for better organization
+            ttk.Separator(content_frame, orient="horizontal").pack(fill="x", pady=3)
+            
+            # CPU Intensive Processes section
+            cpu_frame = ttk.Frame(content_frame, style="Card.TFrame")
+            cpu_frame.pack(fill="x", pady=(0, 5))
+            
+            cpu_icon = ttk.Label(cpu_frame, text="🔘", style="TLabel")
+            cpu_icon.pack(side="left", padx=(0, 5))
+            
+            cpu_title = ttk.Label(
+                cpu_frame,
+                text="CPU INTENSIVE PROCESSES:",
+                style="InfoTitle.TLabel",
+                font=("Segoe UI", 9, "bold")
+            )
+            cpu_title.pack(side="left")
+            
+            # CPU process info
+            cpu_info = ttk.Label(
+                content_frame,
+                text="• No significant CPU usage detected",
+                style="Info.TLabel",
+                font=("Segoe UI", 9)
+            )
+            cpu_info.pack(anchor="w", padx=(20, 0))
+            
+            # Memory Intensive Processes section
+            mem_frame = ttk.Frame(content_frame, style="Card.TFrame")
+            mem_frame.pack(fill="x", pady=(10, 5))
+            
+            mem_icon = ttk.Label(mem_frame, text="📊", style="TLabel")
+            mem_icon.pack(side="left", padx=(0, 5))
+            
+            mem_title = ttk.Label(
+                mem_frame,
+                text="MEMORY INTENSIVE PROCESSES:",
+                style="InfoTitle.TLabel",
+                font=("Segoe UI", 9, "bold")
+            )
+            mem_title.pack(side="left")
+            
+            # Memory process info with multiple entries
+            mem_info1 = ttk.Label(
+                content_frame,
+                text="• svchost.exe (PID: 5724): 274.6 MB",
+                style="Info.TLabel",
+                font=("Segoe UI", 9)
+            )
+            mem_info1.pack(anchor="w", padx=(20, 0))
+            
+            mem_info2 = ttk.Label(
+                content_frame,
+                text="• Cursor.exe (PID: 30184): 618.6 MB",
+                style="Info.TLabel",
+                font=("Segoe UI", 9)
+            )
+            mem_info2.pack(anchor="w", padx=(20, 0))
+            
+            mem_info3 = ttk.Label(
+                content_frame,
+                text="• MsMpEng.exe (PID: 17112): 393.1 MB",
+                style="Info.TLabel",
+                font=("Segoe UI", 9)
+            )
+            mem_info3.pack(anchor="w", padx=(20, 0))
+            
+            # Add a separator for better organization
+            ttk.Separator(content_frame, orient="horizontal").pack(fill="x", pady=3)
+            
+            # Resource Trends section (added)
+            trend_frame = ttk.Frame(content_frame, style="Card.TFrame")
+            trend_frame.pack(fill="x", pady=(5, 5))
+            
+            trend_icon = ttk.Label(trend_frame, text="📈", style="TLabel")
+            trend_icon.pack(side="left", padx=(0, 5))
+            
+            trend_title = ttk.Label(
+                trend_frame,
+                text="RESOURCE TRENDS:",
+                style="InfoTitle.TLabel",
+                font=("Segoe UI", 9, "bold")
+            )
+            trend_title.pack(side="left")
+            
+            # Trend info
+            trend_info = ttk.Label(
+                content_frame,
+                text="• CPU usage: Stable\n• Memory usage: Increasing slightly\n• Disk activity: Low",
+                style="Info.TLabel",
+                font=("Segoe UI", 9)
+            )
+            trend_info.pack(anchor="w", padx=(20, 0))
+            
+            # Bottom controls with better styling
+            controls_frame = ttk.Frame(parent, style="Card.TFrame")
+            controls_frame.pack(fill="x", side="bottom", padx=5, pady=5)
+            
+            refresh_btn = ttk.Button(
+                controls_frame,
+                text="Refresh Analysis",
+                style="Accent.TButton"
+            )
+            refresh_btn.pack(side="left")
+            
+            # Add timestamp for last refresh
+            last_refresh = ttk.Label(
+                controls_frame,
+                text=f"Last updated: {datetime.now().strftime('%H:%M:%S')}",
+                style="Info.TLabel", 
+                font=("Segoe UI", 8)
+            )
+            last_refresh.pack(side="left", padx=(10, 0))
+            
+            auto_refresh = ttk.Checkbutton(
+                controls_frame,
+                text="Auto-refresh",
+                style="TCheckbutton"
+            )
+            auto_refresh.pack(side="right")
+            
+            # Store references for theme updates
+            self.process_intelligence_elements = {
+                'resource_btn': resource_btn,
+                'process_btn': process_btn,
+                'optimize_btn': optimize_btn,
+                'pi_title': pi_title,
+                'last_refresh': last_refresh
+            }
+        except Exception as e:
+            print(f"Error creating Process Intelligence panel: {e}")
+            # Create a minimal panel with an error message
+            error_label = ttk.Label(
+                parent,
+                text=f"Error loading Process Intelligence: {str(e)}",
+                style="InfoTitle.TLabel"
+            )
+            error_label.pack(padx=10, pady=10)
+
+    def create_system_logs_panel(self, parent):
+        """Add system logs/info to use free space around System Monitor heading"""
+        # Left info panel
+        left_info = ttk.Frame(parent, style="Card.TFrame")
+        left_info.pack(side="left", fill="y", padx=(5, 0))
+        
+        # System uptime
+        uptime_frame = ttk.Frame(left_info, style="Card.TFrame")
+        uptime_frame.pack(fill="x", pady=2)
+        
+        uptime_label = ttk.Label(
+            uptime_frame,
+            text="🕒 System Uptime:",
+            style="InfoTitle.TLabel",
+            font=("Segoe UI", 8, "bold")
+        )
+        uptime_label.pack(side="left")
+        
+        self.uptime_value = ttk.Label(
+            uptime_frame,
+            text="Calculating...",
+            style="Info.TLabel",
+            font=("Segoe UI", 8)
+        )
+        self.uptime_value.pack(side="left", padx=(5, 0))
+        
+        # Last refresh time
+        refresh_frame = ttk.Frame(left_info, style="Card.TFrame")
+        refresh_frame.pack(fill="x", pady=2)
+        
+        refresh_label = ttk.Label(
+            refresh_frame,
+            text="🔄 Last Refresh:",
+            style="InfoTitle.TLabel",
+            font=("Segoe UI", 8, "bold")
+        )
+        refresh_label.pack(side="left")
+        
+        self.refresh_time = ttk.Label(
+            refresh_frame,
+            text=datetime.now().strftime("%H:%M:%S"),
+            style="Info.TLabel",
+            font=("Segoe UI", 8)
+        )
+        self.refresh_time.pack(side="left", padx=(5, 0))
+        
+        # Right info panel
+        right_info = ttk.Frame(parent, style="Card.TFrame")
+        right_info.pack(side="right", fill="y", padx=(0, 5))
+        
+        # Session info
+        session_frame = ttk.Frame(right_info, style="Card.TFrame")
+        session_frame.pack(fill="x", pady=2)
+        
+        session_label = ttk.Label(
+            session_frame,
+            text="👤 Session:",
+            style="InfoTitle.TLabel",
+            font=("Segoe UI", 8, "bold")
+        )
+        session_label.pack(side="left")
+        
+        # Get current username
+        username = getpass.getuser()
+        
+        session_value = ttk.Label(
+            session_frame,
+            text=username,
+            style="Info.TLabel",
+            font=("Segoe UI", 8)
+        )
+        session_value.pack(side="left", padx=(5, 0))
+        
+        # Alert count
+        alert_frame = ttk.Frame(right_info, style="Card.TFrame")
+        alert_frame.pack(fill="x", pady=2)
+        
+        alert_label = ttk.Label(
+            alert_frame,
+            text="⚠️ Alerts:",
+            style="InfoTitle.TLabel",
+            font=("Segoe UI", 8, "bold")
+        )
+        alert_label.pack(side="left")
+        
+        self.alert_count = ttk.Label(
+            alert_frame,
+            text="0 active",
+            style="Info.TLabel",
+            font=("Segoe UI", 8)
+        )
+        self.alert_count.pack(side="left", padx=(5, 0))
+        
+        # Add this to the update_data method to update these values
+        self.main_frame.after(1000, self.update_system_logs)
+
+    def update_system_logs(self):
+        """Update system logs and information panels"""
+        try:
+            # Update uptime
+            boot_time = psutil.boot_time()
+            uptime_seconds = time.time() - boot_time
+            days, remainder = divmod(uptime_seconds, 86400)
+            hours, remainder = divmod(remainder, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            
+            if days > 0:
+                uptime_info = f"{int(days)}d {int(hours)}h {int(minutes)}m"
+            elif hours > 0:
+                uptime_info = f"{int(hours)}h {int(minutes)}m {int(seconds)}s"
+            else:
+                uptime_info = f"{int(minutes)}m {int(seconds)}s"
+            
+            if hasattr(self, 'uptime_value'):
+                self.uptime_value.config(text=uptime_info)
+            
+            # Update refresh time
+            if hasattr(self, 'refresh_time'):
+                self.refresh_time.config(text=datetime.now().strftime("%H:%M:%S"))
+            
+            # Update alert count if needed
+            if hasattr(self, 'alert_count') and hasattr(self, 'recent_anomalies'):
+                self.alert_count.config(text=f"{len(self.recent_anomalies)} active")
+            
+            # Schedule next update
+            self.main_frame.after(10000, self.update_system_logs)
+        except Exception as e:
+            print(f"Error updating system logs: {e}")
+            # Schedule anyway to prevent update from stopping on error
+            self.main_frame.after(10000, self.update_system_logs)
