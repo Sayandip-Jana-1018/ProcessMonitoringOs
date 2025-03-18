@@ -4,142 +4,242 @@ import numpy as np
 import psutil
 import platform
 import os
+from matplotlib.patches import Wedge
 
-def create_gauge(parent, theme, label):
-    """Create a gauge chart with modern styling and transparency"""
-    # Create figure and axis with transparency
-    fig, ax = plt.subplots(figsize=(1.8, 1.8), dpi=100)  # Smaller size
-    fig.patch.set_facecolor('none')  # Transparent background
-    fig.patch.set_alpha(0.0)  # Fully transparent
-    ax.set_facecolor('none')  # Transparent axis background
+def create_gauge(parent, theme, label, size=120):
+    """Create a more modern and visually appealing gauge chart"""
+    fig = plt.Figure(figsize=(size/100, size/100), dpi=100)
+    fig.patch.set_facecolor(theme["card_bg"])
+    fig.subplots_adjust(0, 0, 1, 1)
     
-    # Set up the gauge
-    ax.set_xlim(-1, 1)
-    ax.set_ylim(-0.5, 1)
+    # Create subplot with equal aspect ratio
+    ax = fig.add_subplot(111, aspect='equal')
+    ax.set_facecolor(theme["card_bg"])
+    
+    # Define colors based on the type of gauge
+    if label == "CPU":
+        color = "#FF4757"  # Red
+        highlight = "#FF6B81"
+        gradient_top = "#FF8A8A"
+    elif label == "MEM":
+        color = "#2E86DE"  # Blue
+        highlight = "#54A0FF"
+        gradient_top = "#7CB9FF"
+    else:  # DISK
+        color = "#26C281"  # Green
+        highlight = "#2ECC71"
+        gradient_top = "#5FE3A4"
+    
+    # Create the gauge background (semi-circle)
+    theta1, theta2 = 210, -30  # Semi-circle from bottom left to bottom right
+    w = Wedge((0.5, 0.45), 0.35, theta1, theta2, width=0.1, 
+              color=theme["grid_color"], alpha=0.2, linewidth=0)
+    ax.add_artist(w)
+    
+    # Store references for updating
+    ax.user_data = {
+        "color": color,
+        "highlight": highlight,
+        "gradient_top": gradient_top,
+        "theta1": theta1,
+        "theta2": theta2,
+        "label": label
+    }
+    
+    # Add percentage and label texts
+    if label == "CPU":
+        val_color = "#FF4757"
+    elif label == "MEM":
+        val_color = "#2E86DE"
+    else:
+        val_color = "#26C281"
+        
+    # Add label at top
+    label_text = ax.text(0.5, 0.75, label,
+                        ha='center', va='center',
+                        color=color,
+                        fontsize=12,
+                        fontweight='bold')
+    
+    # Add percentage text
+    value_text = ax.text(0.5, 0.45, "0%",
+                        ha='center', va='center',
+                        color=val_color,
+                        fontsize=14,
+                        fontweight='bold')
+    
+    # Add info text
+    if label == "CPU":
+        cpu_count = psutil.cpu_count()
+        info_text = ax.text(0.5, 0.2, f"{cpu_count} threads",
+                           ha='center', va='center',
+                           color=color,
+                           fontsize=8)
+    elif label == "MEM":
+        mem = psutil.virtual_memory()
+        used_gb = mem.used / (1024**3)
+        total_gb = mem.total / (1024**3)
+        info_text = ax.text(0.5, 0.2, f"{used_gb:.1f}/{total_gb:.1f}GB",
+                           ha='center', va='center',
+                           color=color,
+                           fontsize=8)
+    else:  # DISK
+        disk = psutil.disk_usage('C:\\' if platform.system() == 'Windows' else '/')
+        free_gb = disk.free / (1024**3)
+        info_text = ax.text(0.5, 0.2, f"{free_gb:.1f}GB free",
+                           ha='center', va='center',
+                           color=color,
+                           fontsize=8)
+    
+    # Set limits and remove axes
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
     ax.axis('off')
     
-    # Create canvas with transparent background
     canvas = FigureCanvasTkAgg(fig, parent)
-    canvas_widget = canvas.get_tk_widget()
-    canvas_widget.configure(highlightthickness=0)  # Remove border
-    canvas_widget.pack(side="left", padx=2, pady=2)  # Reduced padding for horizontal layout
-    
-    # Draw the figure
-    canvas.draw()
+    canvas.get_tk_widget().pack(side="left", padx=5)
     
     return fig, ax
 
 def update_gauge(ax, percent, label, theme):
-    """Update gauge chart with cleaner design for smaller display"""
+    """Update gauge with new percentage and enhanced visual effects"""
     try:
-        # Ensure percent is a finite value to avoid warnings
-        if not (isinstance(percent, (int, float)) and np.isfinite(percent)):
-            print(f"Warning: Invalid percent value for {label} gauge: {percent}")
-            percent = 0  # Default to 0 if invalid
-
-        # Clear previous content
-        ax.clear()
-        
-        # Get color based on percentage and resource type
+        # Clear the axis but keep the background
+        artists_to_remove = []
+        for artist in ax.get_children():
+            if not isinstance(artist, plt.Text):
+                artists_to_remove.append(artist)
+                
+        # Remove artists safely with error handling
+        for artist in artists_to_remove:
+            try:
+                artist.remove()
+            except Exception:
+                # Silently handle any "cannot remove artist" errors
+                pass
+                
+        # Get or set default values for gauge appearance
         if label == "CPU":
-            base_color = theme["cpu_color"]
+            color = "#FF4757"  # Red
+            highlight = "#FF6B81"
         elif label == "MEM":
-            base_color = theme["mem_color"]
-        elif label == "DISK":
-            base_color = theme["disk_color"]
-        else:
-            base_color = theme["accent"]
+            color = "#2E86DE"  # Blue
+            highlight = "#54A0FF"
+        else:  # DISK
+            color = "#26C281"  # Green
+            highlight = "#2ECC71"
             
-        # Adjust color based on percentage value
-        if percent < 60:
-            color = base_color
-        elif percent < 80:
-            color = theme["warning"]
+        # Determine color based on percentage for warning levels
+        if percent >= 80:
+            gauge_color = "#FF4757"  # Warning red
+            text_color = "#FF4757"
+        elif percent >= 60:
+            gauge_color = "#FFAA00"  # Warning orange
+            text_color = "#FFAA00"
         else:
-            color = theme["danger"]
+            gauge_color = color
+            text_color = color
         
-        # Create pie chart data
-        sizes = [percent, 100-percent]
-        colors = [color, theme["grid_color"]]
+        # Create background circle
+        background_circle = plt.Circle((0.5, 0.5), 0.4, color=theme["grid_color"], alpha=0.2)
+        ax.add_patch(background_circle)
         
-        # Create pie chart with a wedge
-        wedges, _ = ax.pie(sizes, colors=colors, startangle=90, 
-                     counterclock=False, wedgeprops={'edgecolor': 'none', 
-                                                    'linewidth': 1, 
-                                                    'antialiased': True,
-                                                    'alpha': 0.9})  # Slightly transparent
+        # Calculate angle for progress
+        angle = (percent / 100.0) * 360.0
         
-        # Add center circle for donut chart effect
-        centre_circle = plt.Circle((0,0), 0.70, fc='none')  # Transparent center
-        ax.add_patch(centre_circle)
+        # Create progress arc
+        progress = plt.matplotlib.patches.Arc((0.5, 0.5), 0.8, 0.8,
+                                           theta1=-90, theta2=angle-90,
+                                           color=gauge_color, linewidth=4)
+        ax.add_patch(progress)
         
-        # Add percentage label in center
-        ax.text(0, 0.05, f"{percent:.1f}%", 
-                ha='center', va='center', 
-                fontsize=14, fontweight='bold',
-                color=theme["text"])
+        # Update existing text or create new text
+        found_percent_text = False
+        found_label_text = False
+        found_info_text = False
         
-        # Add resource label
-        ax.text(0, -0.2, label, 
-                ha='center', va='center', 
-                fontsize=10, fontweight='bold',
-                color=theme["text"])
-        
-        # Simpler details for smaller gauges
-        if label == "CPU":
-            try:
+        for text in ax.texts:
+            text_content = text.get_text()
+            # Update percentage text
+            if "%" in text_content:
+                text.set_text(f"{percent:.1f}%")
+                text.set_color(text_color)
+                found_percent_text = True
+            # Update label text
+            elif label in text_content:
+                found_label_text = True
+            # Update info text
+            elif any(info_marker in text_content for info_marker in ["threads", "GB", "free"]):
+                if label == "CPU":
+                    cpu_count = psutil.cpu_count()
+                    text.set_text(f"{cpu_count} threads")
+                elif label == "MEM":
+                    mem = psutil.virtual_memory()
+                    used_gb = mem.used / (1024**3)
+                    total_gb = mem.total / (1024**3)
+                    text.set_text(f"{used_gb:.1f}/{total_gb:.1f}GB")
+                elif label == "DISK":
+                    try:
+                        disk = psutil.disk_usage('C:\\' if platform.system() == 'Windows' else '/')
+                        free_gb = disk.free / (1024**3)
+                        text.set_text(f"{free_gb:.1f}GB free")
+                    except Exception:
+                        text.set_text("N/A")
+                text.set_color(text_color)
+                found_info_text = True
+                
+        # Create texts if they don't exist
+        if not found_percent_text:
+            ax.text(0.5, 0.5, f"{percent:.1f}%",
+                    ha='center', va='center',
+                    color=text_color,
+                    fontsize=12,
+                    fontweight='bold')
+            
+        if not found_label_text:
+            ax.text(0.5, 0.25, label,
+                    ha='center', va='center',
+                    color=text_color,
+                    fontsize=10,
+                    fontweight='bold')
+            
+        if not found_info_text:
+            if label == "CPU":
                 cpu_count = psutil.cpu_count()
-                ax.text(0, -0.4, f"{cpu_count} threads", 
-                        ha='center', va='center', 
-                        fontsize=8, color=theme["text"])
-            except Exception as e:
-                print(f"Error getting CPU details: {e}")
-        
-        elif label == "MEM":
-            try:
+                ax.text(0.5, 0.15, f"{cpu_count} threads",
+                        ha='center', va='center',
+                        fontsize=7,
+                        color=text_color)
+            elif label == "MEM":
                 mem = psutil.virtual_memory()
                 used_gb = mem.used / (1024**3)
                 total_gb = mem.total / (1024**3)
-                ax.text(0, -0.4, f"{used_gb:.1f}/{total_gb:.1f}GB", 
-                        ha='center', va='center', 
-                        fontsize=8, color=theme["text"])
-            except Exception as e:
-                print(f"Error getting memory details: {e}")
+                ax.text(0.5, 0.15, f"{used_gb:.1f}/{total_gb:.1f}GB",
+                        ha='center', va='center',
+                        fontsize=7,
+                        color=text_color)
+            elif label == "DISK":
+                try:
+                    disk = psutil.disk_usage('C:\\' if platform.system() == 'Windows' else '/')
+                    free_gb = disk.free / (1024**3)
+                    ax.text(0.5, 0.15, f"{free_gb:.1f}GB free",
+                            ha='center', va='center',
+                            fontsize=7,
+                            color=text_color)
+                except Exception:
+                    ax.text(0.5, 0.15, "N/A",
+                            ha='center', va='center',
+                            fontsize=7,
+                            color=text_color)
         
-        elif label == "DISK":
-            try:
-                if platform.system() == 'Windows':
-                    try:
-                        disk = psutil.disk_usage('C:\\')
-                    except:
-                        system_drive = os.environ.get('SystemDrive', 'C:')
-                        disk = psutil.disk_usage(f"{system_drive}\\")
-                else:
-                    disk = psutil.disk_usage('/')
-                
-                free_gb = disk.free / (1024**3)
-                ax.text(0, -0.4, f"{free_gb:.1f}GB free", 
-                        ha='center', va='center', 
-                        fontsize=8, color=theme["text"])
-            except Exception as e:
-                print(f"Error getting disk details: {e}")
-        
-        # Configure the axes for proper display
-        ax.set_xlim(-1, 1)
-        ax.set_ylim(-1, 1)
+        # Set limits and remove axes
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
         ax.axis('off')
         
     except Exception as e:
-        print(f"Error updating gauge: {e}")
-        # In case of error, display a simple text showing the percentage
-        ax.clear()
-        ax.text(0, 0, f"{label}: {percent:.1f}%", 
-                ha='center', va='center', 
-                fontsize=12, 
-                color=theme["text"])
-        ax.set_xlim(-1, 1)
-        ax.set_ylim(-1, 1)
-        ax.axis('off')
+        # More informative error message with label
+        print(f"Error updating {label} gauge: {e}")
 
 def darken_color(hex_color):
     """Utility function to darken a color for 3D effects"""
