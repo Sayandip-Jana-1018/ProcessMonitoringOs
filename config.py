@@ -2,9 +2,9 @@
 THEMES = {
     "dark": {
         "bg": "#1e1e2e",
-        "card_bg": "#2a2a3c",
-        "text": "#ffffff",
-        "accent": "#7289da",
+        "card_bg": "#252526",
+        "text": "#FFFFFF",
+        "accent": "#007ACC",
         "accent_hover": "#5e73bc",
         "danger": "#f04747",
         "success": "#43b581",
@@ -15,13 +15,14 @@ THEMES = {
         "mem_color": "#43b581",
         "disk_color": "#faa61a",
         "name": "Dark Mode",
-        "icon": "🌙"
+        "icon": "🌙",
+        "button_bg": "#333333"
     },
     "light": {
         "bg": "#f5f7fa",
-        "card_bg": "#ffffff",
-        "text": "#2e3338",
-        "accent": "#5865f2",
+        "card_bg": "#FFFFFF",
+        "text": "#000000",
+        "accent": "#0078D4",
         "accent_hover": "#4752c4",
         "danger": "#ed4245",
         "success": "#3ba55c",
@@ -32,7 +33,8 @@ THEMES = {
         "mem_color": "#3ba55c",
         "disk_color": "#faa81a",
         "name": "Light Mode",
-        "icon": "☀️"
+        "icon": "☀️",
+        "button_bg": "#e0e0e0"
     },
     "blue-tech": {
         "bg": "#0a192f",
