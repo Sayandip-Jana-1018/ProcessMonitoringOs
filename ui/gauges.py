@@ -5,6 +5,7 @@ import psutil
 import platform
 import os
 from matplotlib.patches import Wedge
+import shutil  # Added import for shutil
 
 def create_gauge(parent, theme, label, size=120):
     """Create a more modern and visually appealing gauge chart"""
@@ -84,12 +85,19 @@ def create_gauge(parent, theme, label, size=120):
                            color=color,
                            fontsize=8)
     else:  # DISK
-        disk = psutil.disk_usage('C:\\' if platform.system() == 'Windows' else '/')
-        free_gb = disk.free / (1024**3)
-        info_text = ax.text(0.5, 0.2, f"{free_gb:.1f}GB free",
-                           ha='center', va='center',
-                           color=color,
-                           fontsize=8)
+        try:
+            path = 'C:\\' if platform.system() == 'Windows' else '/'
+            total, used, free = shutil.disk_usage(path)
+            free_gb = free / (1024**3)
+            info_text = ax.text(0.5, 0.2, f"{free_gb:.1f}GB free",
+                               ha='center', va='center',
+                               color=color,
+                               fontsize=8)
+        except Exception:
+            info_text = ax.text(0.5, 0.2, "N/A",
+                               ha='center', va='center',
+                               color=color,
+                               fontsize=8)
     
     # Set limits and remove axes
     ax.set_xlim(0, 1)
@@ -180,8 +188,9 @@ def update_gauge(ax, percent, label, theme):
                     text.set_text(f"{used_gb:.1f}/{total_gb:.1f}GB")
                 elif label == "DISK":
                     try:
-                        disk = psutil.disk_usage('C:\\' if platform.system() == 'Windows' else '/')
-                        free_gb = disk.free / (1024**3)
+                        path = 'C:\\' if platform.system() == 'Windows' else '/'
+                        total, used, free = shutil.disk_usage(path)
+                        free_gb = free / (1024**3)
                         text.set_text(f"{free_gb:.1f}GB free")
                     except Exception:
                         text.set_text("N/A")
@@ -220,8 +229,9 @@ def update_gauge(ax, percent, label, theme):
                         color=text_color)
             elif label == "DISK":
                 try:
-                    disk = psutil.disk_usage('C:\\' if platform.system() == 'Windows' else '/')
-                    free_gb = disk.free / (1024**3)
+                    path = 'C:\\' if platform.system() == 'Windows' else '/'
+                    total, used, free = shutil.disk_usage(path)
+                    free_gb = free / (1024**3)
                     ax.text(0.5, 0.15, f"{free_gb:.1f}GB free",
                             ha='center', va='center',
                             fontsize=7,
@@ -240,51 +250,3 @@ def update_gauge(ax, percent, label, theme):
     except Exception as e:
         # More informative error message with label
         print(f"Error updating {label} gauge: {e}")
-
-def darken_color(hex_color):
-    """Utility function to darken a color for 3D effects"""
-    try:
-        # Convert hex to RGB
-        h = hex_color.lstrip('#')
-        rgb = tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
-        
-        # Darken by reducing each component by 20%
-        darkened = tuple(max(0, int(c * 0.8)) for c in rgb)
-        
-        # Convert back to hex
-        return '#{:02x}{:02x}{:02x}'.format(*darkened)
-    except (ValueError, IndexError):
-        return hex_color
-
-def lighten_color(hex_color):
-    """Utility function to lighten a color"""
-    try:
-        # Convert hex to RGB
-        h = hex_color.lstrip('#')
-        rgb = tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
-        
-        # Lighten by increasing each component by 20%
-        lightened = tuple(min(255, int(c * 1.2)) for c in rgb)
-        
-        # Convert back to hex
-        return '#{:02x}{:02x}{:02x}'.format(*lightened)
-    except (ValueError, IndexError):
-        return hex_color
-
-def blend_colors(color1, color2, ratio):
-    """Utility function to blend two colors"""
-    try:
-        # Convert hex to RGB
-        h1 = color1.lstrip('#')
-        rgb1 = tuple(int(h1[i:i+2], 16) for i in (0, 2, 4))
-        
-        h2 = color2.lstrip('#')
-        rgb2 = tuple(int(h2[i:i+2], 16) for i in (0, 2, 4))
-        
-        # Blend colors
-        blended = tuple(int(r1 + (r2 - r1) * ratio) for r1, r2 in zip(rgb1, rgb2))
-        
-        # Convert back to hex
-        return '#{:02x}{:02x}{:02x}'.format(*blended)
-    except (ValueError, IndexError):
-        return color1 
