@@ -607,12 +607,21 @@ class ProcessMonitorApp:
                 # Update the timeline in the UI if the method exists
                 try:
                     if hasattr(self, 'top_section') and hasattr(self.top_section, 'update_ai_timeline'):
+<<<<<<< HEAD
                 self.top_section.update_ai_timeline(
                     collection_time=collection_time,
                     training_status=training_status,
                     prediction_status=prediction_status,
                     system_status=system_status
                 )
+=======
+                        self.top_section.update_ai_timeline(
+                            collection_time=collection_time,
+                            training_status=training_status,
+                            prediction_status=prediction_status,
+                            system_status=system_status
+                        )
+>>>>>>> 0194478 (Updated multiple files with improvements)
                         # Fallback for older versions that might have collection_status
                     elif hasattr(self, 'collection_status'):
                         self.collection_status.configure(text=f"{collection_time:.1f} mins")
@@ -2153,7 +2162,11 @@ class ProcessMonitorApp:
     def create_process_intelligence(self, parent):
         """Create the Process Intelligence section with relationship graph visualization"""
         # Create header with tabs for different views
+<<<<<<< HEAD
             header_frame = ttk.Frame(parent, style="Card.TFrame")
+=======
+        header_frame = ttk.Frame(parent, style="Card.TFrame")
+>>>>>>> 0194478 (Updated multiple files with improvements)
         header_frame.pack(fill="x", padx=5, pady=(5, 0))
             
         # Add title
@@ -2365,6 +2378,7 @@ class ProcessMonitorApp:
         """Create the Resource Usage tab content"""
             # Time label with more details
         time_frame = ttk.Frame(self.resource_usage_frame, style="Card.TFrame")
+<<<<<<< HEAD
             time_frame.pack(fill="x", pady=(0, 5))
             
             time_icon = ttk.Label(time_frame, text="⏱️", style="TLabel")
@@ -2377,6 +2391,20 @@ class ProcessMonitorApp:
                 font=("Segoe UI", 9, "bold")
             )
             time_label.pack(side="left")
+=======
+        time_frame.pack(fill="x", pady=(0, 5))
+        
+        time_icon = ttk.Label(time_frame, text="⏱️", style="TLabel")
+        time_icon.pack(side="left", padx=(0, 5))
+        
+        time_label = ttk.Label(
+            time_frame,
+            text="Resource Usage Analysis - 01:25:38",
+            style="InfoTitle.TLabel",
+            font=("Segoe UI", 9, "bold")
+        )
+        time_label.pack(side="left")
+>>>>>>> 0194478 (Updated multiple files with improvements)
             
             # Add a separator for better organization
         ttk.Separator(self.resource_usage_frame, orient="horizontal").pack(fill="x", pady=3)
@@ -2385,6 +2413,7 @@ class ProcessMonitorApp:
         summary_frame = ttk.Frame(self.resource_usage_frame, style="Card.TFrame")
         summary_frame.pack(fill="x", pady=(0, 5))
             
+<<<<<<< HEAD
             summary_icon = ttk.Label(summary_frame, text="📋", style="TLabel")
             summary_icon.pack(side="left", padx=(0, 5))
             
@@ -2400,18 +2429,40 @@ class ProcessMonitorApp:
             total_processes = len(list(psutil.process_iter()))
             mem = psutil.virtual_memory()
             summary_info = ttk.Label(
+=======
+        summary_icon = ttk.Label(summary_frame, text="📋", style="TLabel")
+        summary_icon.pack(side="left", padx=(0, 5))
+        
+        summary_title = ttk.Label(
+            summary_frame,
+            text="SYSTEM SUMMARY:",
+            style="InfoTitle.TLabel",
+            font=("Segoe UI", 9, "bold")
+        )
+        summary_title.pack(side="left")
+        
+        # Summary info
+        total_processes = len(list(psutil.process_iter()))
+        mem = psutil.virtual_memory()
+        summary_info = ttk.Label(
+>>>>>>> 0194478 (Updated multiple files with improvements)
         self.resource_usage_frame,
                 text=f"• Total processes: {total_processes}\n• Memory in use: {mem.percent}%\n• Average CPU load: {psutil.cpu_percent(interval=0.1)}%",
                 style="Info.TLabel",
                 font=("Segoe UI", 9)
             )
+<<<<<<< HEAD
             summary_info.pack(anchor="w", padx=(20, 0))
+=======
+        summary_info.pack(anchor="w", padx=(20, 0))
+>>>>>>> 0194478 (Updated multiple files with improvements)
             
             # Add a separator for better organization
         ttk.Separator(self.resource_usage_frame, orient="horizontal").pack(fill="x", pady=3)
             
             # CPU Intensive Processes section
         cpu_frame = ttk.Frame(self.resource_usage_frame, style="Card.TFrame")
+<<<<<<< HEAD
             cpu_frame.pack(fill="x", pady=(0, 5))
             
             cpu_icon = ttk.Label(cpu_frame, text="🔘", style="TLabel")
@@ -2427,17 +2478,39 @@ class ProcessMonitorApp:
             
             # CPU process info
             cpu_info = ttk.Label(
+=======
+        cpu_frame.pack(fill="x", pady=(0, 5))
+        
+        cpu_icon = ttk.Label(cpu_frame, text="🔘", style="TLabel")
+        cpu_icon.pack(side="left", padx=(0, 5))
+        
+        cpu_title = ttk.Label(
+            cpu_frame,
+            text="CPU INTENSIVE PROCESSES:",
+            style="InfoTitle.TLabel",
+            font=("Segoe UI", 9, "bold")
+        )
+        cpu_title.pack(side="left")
+        
+        # CPU process info
+        cpu_info = ttk.Label(
+>>>>>>> 0194478 (Updated multiple files with improvements)
         self.resource_usage_frame,
                 text="• No significant CPU usage detected",
                 style="Info.TLabel",
                 font=("Segoe UI", 9)
             )
+<<<<<<< HEAD
             cpu_info.pack(anchor="w", padx=(20, 0))
+=======
+        cpu_info.pack(anchor="w", padx=(20, 0))
+>>>>>>> 0194478 (Updated multiple files with improvements)
             
             # Memory Intensive Processes section
         mem_frame = ttk.Frame(self.resource_usage_frame, style="Card.TFrame")
         mem_frame.pack(fill="x", pady=(5, 5))
             
+<<<<<<< HEAD
             mem_icon = ttk.Label(mem_frame, text="📊", style="TLabel")
             mem_icon.pack(side="left", padx=(0, 5))
             
@@ -2448,6 +2521,18 @@ class ProcessMonitorApp:
                 font=("Segoe UI", 9, "bold")
             )
             mem_title.pack(side="left")
+=======
+        mem_icon = ttk.Label(mem_frame, text="📊", style="TLabel")
+        mem_icon.pack(side="left", padx=(0, 5))
+        
+        mem_title = ttk.Label(
+            mem_frame,
+            text="MEMORY INTENSIVE PROCESSES:",
+            style="InfoTitle.TLabel",
+            font=("Segoe UI", 9, "bold")
+        )
+        mem_title.pack(side="left")
+>>>>>>> 0194478 (Updated multiple files with improvements)
             
         # Memory process info with multiple entries - keep this compact
         mem_info = ttk.Label(
@@ -2460,6 +2545,7 @@ class ProcessMonitorApp:
         
         # Resource Trends section
         trend_frame = ttk.Frame(self.resource_usage_frame, style="Card.TFrame")
+<<<<<<< HEAD
             trend_frame.pack(fill="x", pady=(5, 5))
             
             trend_icon = ttk.Label(trend_frame, text="📈", style="TLabel")
@@ -2475,11 +2561,29 @@ class ProcessMonitorApp:
             
             # Trend info
             trend_info = ttk.Label(
+=======
+        trend_frame.pack(fill="x", pady=(5, 5))
+        
+        trend_icon = ttk.Label(trend_frame, text="📈", style="TLabel")
+        trend_icon.pack(side="left", padx=(0, 5))
+        
+        trend_title = ttk.Label(
+            trend_frame,
+            text="RESOURCE TRENDS:",
+            style="InfoTitle.TLabel",
+            font=("Segoe UI", 9, "bold")
+        )
+        trend_title.pack(side="left")
+        
+        # Trend info
+        trend_info = ttk.Label(
+>>>>>>> 0194478 (Updated multiple files with improvements)
         self.resource_usage_frame,
                 text="• CPU usage: Stable\n• Memory usage: Increasing slightly\n• Disk activity: Low",
                 style="Info.TLabel",
                 font=("Segoe UI", 9)
             )
+<<<<<<< HEAD
             trend_info.pack(anchor="w", padx=(20, 0))
             
         # Bottom controls
@@ -2487,11 +2591,21 @@ class ProcessMonitorApp:
             controls_frame.pack(fill="x", side="bottom", padx=5, pady=5)
             
             refresh_btn = ttk.Button(
+=======
+        trend_info.pack(anchor="w", padx=(20, 0))
+            
+        # Bottom controls
+        controls_frame = ttk.Frame(self.resource_usage_frame, style="Card.TFrame")
+        controls_frame.pack(fill="x", side="bottom", padx=5, pady=5)
+            
+        refresh_btn = ttk.Button(
+>>>>>>> 0194478 (Updated multiple files with improvements)
                 controls_frame,
                 text="Refresh Analysis",
         style="Accent.TButton",
         command=self.refresh_dashboard
             )
+<<<<<<< HEAD
             refresh_btn.pack(side="left")
             
             # Add timestamp for last refresh
@@ -2502,6 +2616,18 @@ class ProcessMonitorApp:
                 font=("Segoe UI", 8)
             )
             last_refresh.pack(side="left", padx=(10, 0))
+=======
+        refresh_btn.pack(side="left")
+        
+        # Add timestamp for last refresh
+        last_refresh = ttk.Label(
+            controls_frame,
+            text=f"Last updated: {datetime.now().strftime('%H:%M:%S')}",
+            style="Info.TLabel", 
+            font=("Segoe UI", 8)
+        )
+        last_refresh.pack(side="left", padx=(10, 0))
+>>>>>>> 0194478 (Updated multiple files with improvements)
             
     def create_process_relations_tab(self):
         """Create the Process Relations tab content with a simplified view"""
