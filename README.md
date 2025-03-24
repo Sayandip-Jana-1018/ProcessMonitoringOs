@@ -1,6 +1,10 @@
 ### **Project Titile: Real Time Process Monitoring Dashboard**
 - Authors: Sayandip Jana, Mohit Kumar Mishra, Anurag Pandey
 
+### Screenshot of Dashboard:
+![image](https://github.com/user-attachments/assets/0b60728d-59d7-4ea0-b62a-00d32fe18770)
+
+
 ### 1. Project Overview
 **Goals**:  
 The goal is to transform your current task manager-like dashboard into an advanced, visually appealing, and innovative real-time process monitoring tool. It should not only display process states, CPU usage, and memory consumption but also empower administrators with efficient process management and proactive issue detection.
