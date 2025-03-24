@@ -1,6 +1,5 @@
-Below is a detailed response to your query about enhancing your Real-Time Process Monitoring Dashboard project. I’ll provide a comprehensive plan to modernize the UI and introduce innovative features, building on your existing Tkinter-based implementation.
-
----
+### **Project Titile: Real Time Process Monitoring Dashboard**
+- Authors: Sayandip Jana, Mohit Kumar Mishra, Anurag Pandey
 
 ### 1. Project Overview
 **Goals**:  
