@@ -177,6 +177,27 @@ CUSTOM_STYLES = {
             "background": [("active", "{accent_hover}")],
             "foreground": [("active", "{bg}")]
         }
+    },
+    "AI.TButton": {
+        "configure": {
+            "background": "#252640",  # Dark background for AI section
+            "foreground": "#c5cde6",  # Light text for contrast
+            "borderwidth": 1,
+            "focusthickness": 0,
+            "padding": (8, 4),
+            "font": ("Segoe UI", 9, "bold")
+        },
+        "map": {
+            "background": [("active", "#3a3c60")],  # Slightly lighter when active
+            "foreground": [("active", "#ffffff")]   # White text when active
+        }
+    },
+    "AICard.TFrame": {
+        "configure": {
+            "background": "#252640",  # Dark background for AI section
+            "relief": "flat",
+            "borderwidth": 0
+        }
     }
 }
 

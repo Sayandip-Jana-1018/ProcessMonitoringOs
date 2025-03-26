@@ -34,7 +34,7 @@ class ProcessMonitorApp:
         self.root.geometry("1280x720")
         
         # Default theme
-        self.current_theme = "dark"
+        self.current_theme = "sunrise"
         self.theme = THEMES[self.current_theme]
         
         # Configure ttk styles based on theme
@@ -272,6 +272,12 @@ class ProcessMonitorApp:
                            background=self.theme["card_bg"],
                            borderwidth=0)
         
+        # Add AICard.TFrame style using chart_bg from theme
+        self.style.configure("AICard.TFrame",
+                           background=self.theme["chart_bg"],
+                           relief="flat",
+                           borderwidth=0)
+        
         # Label styles with proper background and text colors
         self.style.configure("TLabel", 
                            font=("Segoe UI", 10),
@@ -349,22 +355,24 @@ class ProcessMonitorApp:
                            foreground="#FFFFFF",
                            borderwidth=1)
         
-        # AI button style
+        # AI button style using chart_bg and text colors from theme
         self.style.configure("AI.TButton",
                            font=("Segoe UI", 10),
                            padding=(20, 8),
-                           background=self.theme["accent"],
-                           foreground="#FFFFFF")
+                           background=self.theme["chart_bg"],
+                           foreground=self.theme["text"],
+                           borderwidth=1,
+                           focusthickness=0)
         
         # Configure selected state for AI buttons
         self.style.map("AI.TButton",
-                      background=[("active", self.theme.get("accent_dark", "#106EBE")),
-                                ("selected", self.theme.get("accent_dark", "#106EBE"))],
+                      background=[("active", self.theme["grid_color"]),
+                                ("selected", self.theme["grid_color"])],
                       foreground=[("active", "#FFFFFF"),
                                 ("selected", "#FFFFFF")])
         
         self.style.configure("AI.TButton.Selected",
-                           background=self.theme.get("accent_dark", "#106EBE"),
+                           background=self.theme["grid_color"],
                            foreground="#FFFFFF")
         
         # Notebook styles
@@ -607,24 +615,12 @@ class ProcessMonitorApp:
                 # Update the timeline in the UI if the method exists
                 try:
                     if hasattr(self, 'top_section') and hasattr(self.top_section, 'update_ai_timeline'):
-<<<<<<< HEAD
-                self.top_section.update_ai_timeline(
-                    collection_time=collection_time,
-                    training_status=training_status,
-                    prediction_status=prediction_status,
-                    system_status=system_status
-                )
-=======
                         self.top_section.update_ai_timeline(
                             collection_time=collection_time,
                             training_status=training_status,
                             prediction_status=prediction_status,
                             system_status=system_status
                         )
->>>>>>> 0194478 (Updated multiple files with improvements)
-                        # Fallback for older versions that might have collection_status
-                    elif hasattr(self, 'collection_status'):
-                        self.collection_status.configure(text=f"{collection_time:.1f} mins")
                 except Exception as e:
                     print(f"Error updating AI timeline: {e}")
                     # Fallback to basic status update
@@ -687,25 +683,62 @@ class ProcessMonitorApp:
     def kill_process(self):
         """Kill the selected process"""
         try:
-            # Check if we have a middle section
-            if not hasattr(self, 'middle_section') or self.middle_section is None:
-                messagebox.showerror("Error", "Process management is not initialized")
-                return
-                
-            # Check if the middle section has a tree
-            if not hasattr(self.middle_section, 'tree'):
-                messagebox.showerror("Error", "Process list not initialized")
-                return
-                
-            # Get selected process
-            selected = self.middle_section.tree.selection()
-            if not selected:
+            # First try to get the selected process from the main process list
+            selected_process = None
+            pid = None
+            process_name = None
+            
+            # Check if we have a middle section with a process tree
+            if hasattr(self, 'middle_section') and self.middle_section is not None and hasattr(self.middle_section, 'tree'):
+                selected = self.middle_section.tree.selection()
+                if selected:
+                    item = self.middle_section.tree.item(selected[0])
+                    try:
+                        pid = int(item['values'][0])
+                        process_name = item['values'][1]
+                        selected_process = (pid, process_name)
+                    except (IndexError, ValueError, TypeError) as e:
+                        print(f"Error getting process from middle section: {e}")
+            
+            # If no process is selected in the middle section, check the process intelligence section
+            if selected_process is None and hasattr(self, 'process_intelligence') and self.process_intelligence is not None:
+                if hasattr(self.process_intelligence, 'pi_tree'):
+                    selected = self.process_intelligence.pi_tree.selection()
+                    if selected:
+                        item = self.process_intelligence.pi_tree.item(selected[0])
+                        try:
+                            # The process ID is in the first column
+                            pid = int(item['values'][0])
+                            # The process name is in the second column
+                            process_name = item['values'][1] if len(item['values']) > 1 else f"Process {pid}"
+                            selected_process = (pid, process_name)
+                        except (IndexError, ValueError, TypeError) as e:
+                            print(f"Error getting process from process intelligence: {e}")
+            
+            # If still no process is selected, check if a process is selected in the dropdown
+            if selected_process is None and hasattr(self, 'selected_process'):
+                try:
+                    process_name = self.selected_process.get()
+                    if process_name:
+                        # Find the process in the process list to get its PID
+                        for proc in psutil.process_iter(['pid', 'name']):
+                            try:
+                                if proc.info['name'] == process_name:
+                                    pid = proc.info['pid']
+                                    selected_process = (pid, process_name)
+                                    break
+                            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                continue
+                except AttributeError:
+                    # If selected_process is not a StringVar but a list or other object
+                    pass
+            
+            # If still no process is selected, show a warning
+            if selected_process is None:
                 messagebox.showwarning("Warning", "Please select a process to terminate.")
                 return
-                
-            item = self.middle_section.tree.item(selected[0])
-            pid = int(item['values'][0])
-            process_name = item['values'][1]
+            
+            pid, process_name = selected_process
             
             # Confirm with the user
             if messagebox.askyesno("Confirm", f"Are you sure you want to terminate process {pid} ({process_name})?"):
@@ -720,9 +753,12 @@ class ProcessMonitorApp:
                     except psutil.TimeoutExpired:
                         process.kill()
                     
-                    # Refresh the process list after successful termination
-                    if hasattr(self.middle_section, 'update_process_list'):
+                    # Refresh the process lists
+                    if hasattr(self, 'middle_section') and hasattr(self.middle_section, 'update_process_list'):
                         self.middle_section.update_process_list()
+                    
+                    if hasattr(self, 'process_intelligence') and hasattr(self.process_intelligence, 'update_process_intelligence'):
+                        self.process_intelligence.update_process_intelligence()
                     
                     messagebox.showinfo("Success", f"Process {pid} ({process_name}) has been terminated.")
                 except psutil.NoSuchProcess:
@@ -1151,116 +1187,67 @@ class ProcessMonitorApp:
     def update_performance_graphs(self):
         """Update the performance graphs with the latest data and area fill"""
         try:
-            # Get the selected time range
-            time_range_str = "5 minutes"  # Default
-            if hasattr(self, 'time_range_var'):
-                time_range_str = self.time_range_var.get()
-            elif hasattr(self, 'time_range'):
-                time_range_str = self.time_range.get()
+            # Get theme colors from the current theme
+            text_color = self.theme["text"]  # Text color from theme
             
-            # Parse the time range
-            if time_range_str == "5 minutes":
+            # Get the time range from the dropdown
+            time_range_text = self.time_range_var.get()
+            if time_range_text == "5 minutes":
                 time_range = 300  # 5 minutes in seconds
-            elif time_range_str == "15 minutes":
+            elif time_range_text == "15 minutes":
                 time_range = 900  # 15 minutes in seconds
-            elif time_range_str == "30 minutes":
+            elif time_range_text == "30 minutes":
                 time_range = 1800  # 30 minutes in seconds
             else:  # 1 hour
                 time_range = 3600  # 1 hour in seconds
             
-            # Ensure we have data to plot
-            if not self.timestamps or len(self.timestamps) < 2:
-                # Create some sample data
-                current_time = time.time()
-                self.timestamps = [current_time - (i * 10) for i in range(20)]
-                self.cpu_usage_history = [random.randint(1, 15) for _ in range(20)]
-                self.mem_usage_history = [random.randint(20, 60) for _ in range(20)]
-                self.disk_usage_history = [random.randint(5, 25) for _ in range(20)]
+            # Calculate relative times for x-axis (in seconds)
+            current_time = time.time()
+            timestamps = [t - current_time for t in self.timestamps]
             
-            # Get current time
-            now = time.time()  # Use time.time() instead of datetime.now()
+            # Filter data to the selected time range
+            filtered_indices = [i for i, t in enumerate(timestamps) if t >= -time_range]
             
-            # Filter data to only show the selected time range
-            start_time = now - time_range
-            
-            # Convert timestamps to relative time in seconds (for x-axis)
-            relative_times = []
-            filtered_cpu = []
-            filtered_mem = []
-            filtered_disk = []
-            
-            for i, ts in enumerate(self.timestamps):
-                # Ensure timestamps are comparable (both float)
-                if isinstance(ts, datetime):
-                    ts = ts.timestamp()  # Convert datetime to timestamp if needed
+            if not filtered_indices:
+                return  # No data to display
                 
-                if ts >= start_time:
-                    # Calculate seconds ago
-                    seconds_ago = now - ts
-                    relative_times.append(seconds_ago)
-                    
-                    # Add corresponding data
-                    if i < len(self.cpu_usage_history):
-                        filtered_cpu.append(self.cpu_usage_history[i])
-                    if i < len(self.mem_usage_history):
-                        filtered_mem.append(self.mem_usage_history[i])
-                    if i < len(self.disk_usage_history):
-                        filtered_disk.append(self.disk_usage_history[i])
+            relative_times = [timestamps[i] for i in filtered_indices]
+            filtered_cpu = [self.cpu_usage_history[i] for i in filtered_indices]
+            filtered_mem = [self.mem_usage_history[i] for i in filtered_indices]
+            filtered_disk = [self.disk_usage_history[i] for i in filtered_indices]
             
-            # If we don't have any data in the selected time range, use sample data
-            if not relative_times:
-                relative_times = [-60, -45, -30, -15, 0]
-                filtered_cpu = [5, 7, 4, 6, 3]
-                filtered_mem = [45, 48, 46, 49, 47]
-                filtered_disk = [12, 12, 13, 12, 12]
-            else:
-                # Reverse the data so it shows oldest to newest (left to right)
-                relative_times = [-x for x in reversed(relative_times)]
-                filtered_cpu = list(reversed(filtered_cpu))
-                filtered_mem = list(reversed(filtered_mem))
-                filtered_disk = list(reversed(filtered_disk))
-            
-            # Update the plots
             # Update the line data
             self.cpu_line.set_data(relative_times, filtered_cpu)
             self.mem_line.set_data(relative_times, filtered_mem)
             self.disk_line.set_data(relative_times, filtered_disk)
             
-            # Clear previous fill and add new fill
-            # Need to remove old fills first
-            if hasattr(self, 'cpu_fill'):
+            # Remove old area fills
+            for collection in self.cpu_ax.collections + self.mem_ax.collections + self.disk_ax.collections:
                 try:
-                    self.cpu_fill.remove()
-                except:
-                    pass
-            if hasattr(self, 'mem_fill'):
-                try:
-                    self.mem_fill.remove()
-                except:
-                    pass
-            if hasattr(self, 'disk_fill'):
-                try:
-                    self.disk_fill.remove()
+                    collection.remove()
                 except:
                     pass
                 
             # Add new area fills
-            self.cpu_fill = self.cpu_ax.fill_between(relative_times, 0, filtered_cpu, color=self.theme["cpu_color"], alpha=0.3)
-            self.mem_fill = self.mem_ax.fill_between(relative_times, 0, filtered_mem, color=self.theme["mem_color"], alpha=0.3)
-            self.disk_fill = self.disk_ax.fill_between(relative_times, 0, filtered_disk, color=self.theme["disk_color"], alpha=0.3)
+            self.cpu_fill = self.cpu_ax.fill_between(relative_times, 0, filtered_cpu, color=self.theme["cpu_color"], alpha=0.2)
+            self.mem_fill = self.mem_ax.fill_between(relative_times, 0, filtered_mem, color=self.theme["mem_color"], alpha=0.2)
+            self.disk_fill = self.disk_ax.fill_between(relative_times, 0, filtered_disk, color=self.theme["disk_color"], alpha=0.2)
             
             # Update axis limits
             min_time = min(relative_times) if relative_times else -60
+            # Add a small offset to prevent identical low and high xlims
+            if min_time == 0:
+                min_time = -0.1  # Small offset to avoid identical values
+                
             self.cpu_ax.set_xlim(min_time, 0)
             self.mem_ax.set_xlim(min_time, 0)
             self.disk_ax.set_xlim(min_time, 0)
             
-            # Add bottom label for clarity
-            self.disk_ax.set_xlabel("Seconds ago", color=self.theme["text"], fontsize=8)
+            # Add bottom label for clarity with theme text color
+            self.disk_ax.set_xlabel("Seconds ago", color=text_color, fontsize=8)
             
             # Redraw the canvas
             self.canvas.draw()
-                
         except Exception as e:
             print(f"Error updating performance graphs: {e}")
             # Create sample data to show something rather than blank graphs
@@ -1293,9 +1280,9 @@ class ProcessMonitorApp:
                     except:
                         pass
                 
-                self.cpu_fill = self.cpu_ax.fill_between(sample_data['times'], 0, sample_data['cpu'], color=self.theme["cpu_color"], alpha=0.3)
-                self.mem_fill = self.mem_ax.fill_between(sample_data['times'], 0, sample_data['mem'], color=self.theme["mem_color"], alpha=0.3)
-                self.disk_fill = self.disk_ax.fill_between(sample_data['times'], 0, sample_data['disk'], color=self.theme["disk_color"], alpha=0.3)
+                self.cpu_fill = self.cpu_ax.fill_between(sample_data['times'], 0, sample_data['cpu'], color=self.theme["cpu_color"], alpha=0.2)
+                self.mem_fill = self.mem_ax.fill_between(sample_data['times'], 0, sample_data['mem'], color=self.theme["mem_color"], alpha=0.2)
+                self.disk_fill = self.disk_ax.fill_between(sample_data['times'], 0, sample_data['disk'], color=self.theme["disk_color"], alpha=0.2)
                 
                 self.cpu_ax.set_xlim(-60, 0)
                 self.mem_ax.set_xlim(-60, 0)
@@ -1391,11 +1378,11 @@ class ProcessMonitorApp:
         # Add timestamp
         current_time = datetime.now().strftime("%H:%M:%S")
         
-        # Add message with timestamp
+        # Add message with timestamp and center tag
         if self.chat_display.get("1.0", tk.END).strip():
-            self.chat_display.insert(tk.END, f"\n\n[{current_time}] {message}")
+            self.chat_display.insert(tk.END, f"\n\n[{current_time}] {message}", "center")
         else:
-            self.chat_display.insert(tk.END, f"[{current_time}] {message}")
+            self.chat_display.insert(tk.END, f"[{current_time}] {message}", "center")
         
         # Scroll to the end
         self.chat_display.see(tk.END)
@@ -1670,7 +1657,7 @@ class ProcessMonitorApp:
         # Get the values from the selected item
         values = self.process_tree.item(selected[0])['values']
         
-        # Debug print to verify we're getting values
+        # Debug print to verify what we're getting
         print(f"Selected process: {values}")
         
         # Make sure we have values before returning
@@ -1715,28 +1702,16 @@ class ProcessMonitorApp:
         # Create a figure with slightly smaller height to fit more on screen
         self.fig = plt.Figure(figsize=(7, 3.8), dpi=100)
         
-        # Set figure background to match the bg_color from the current theme
-        if "bg_color" in self.theme:
-            self.fig.patch.set_facecolor(self.theme["bg_color"])
-        else:
-            self.fig.patch.set_facecolor(self.theme["card_bg"])
+        # Get theme colors from the current theme
+        chart_bg_color = self.theme["chart_bg"]  # Background color for charts
+        text_color = self.theme["text"]  # Text color from theme
+        grid_color = self.theme["grid_color"]  # Grid color from theme
+        
+        # Set figure background to match the theme
+        self.fig.patch.set_facecolor(chart_bg_color)
         
         # Configure the layout to be compact
         self.fig.subplots_adjust(bottom=0.15, top=0.9, hspace=0.4)
-        
-        # Set chart background color based on theme
-        if "chart_bg" not in self.theme:
-            # If chart_bg is not defined in the theme, create a slightly darker/lighter variant
-            if self.current_theme == "dark":
-                # For dark themes, make background slightly darker than card_bg
-                rgb = tuple(int(self.theme["card_bg"].lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
-                darkened = tuple(max(0, c - 20) for c in rgb)  # Darken by 20
-                self.theme["chart_bg"] = "#{:02x}{:02x}{:02x}".format(*darkened)
-            else:
-                # For light themes, make background slightly lighter than card_bg
-                rgb = tuple(int(self.theme["card_bg"].lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
-                lightened = tuple(min(255, c + 20) for c in rgb)  # Lighten by 20
-                self.theme["chart_bg"] = "#{:02x}{:02x}{:02x}".format(*lightened)
         
         # Create plots
         self.cpu_ax = self.fig.add_subplot(311)
@@ -1749,29 +1724,27 @@ class ProcessMonitorApp:
             (self.mem_ax, "Memory Usage (%)", self.theme["mem_color"]),
             (self.disk_ax, "Disk Usage (%)", self.theme["disk_color"])
         ]:
-            ax.set_facecolor(self.theme["chart_bg"])
-            ax.set_title(title, fontsize=9, color=self.theme["text"])
+            ax.set_facecolor(chart_bg_color)  # Use theme background color
+            ax.set_title(title, fontsize=9, color=text_color)  # Use theme text color
             ax.set_xlim(-60, 0)  # 60 seconds default
             ax.set_ylim(0, 100)
-            ax.tick_params(axis='both', colors=self.theme["text"], labelsize=8)
-            ax.grid(True, linestyle='--', color=self.theme["grid_color"], alpha=0.4)
+            ax.tick_params(axis='both', colors=text_color, labelsize=8)  # Use theme text color
+            ax.grid(True, linestyle='--', color=grid_color, alpha=0.6)  # Use theme grid color
             
             # Update spines color to match theme
             for spine in ax.spines.values():
-                spine.set_color(self.theme["text"])
-            
-            # Add a subtle grid for better readability
-            ax.grid(True, which='major', color=self.theme["grid_color"], linestyle='--', linewidth=0.5, alpha=0.4)
+                spine.set_color(grid_color)  # Use theme grid color
+                spine.set_linewidth(0.5)
             
             # Remove x-labels except for the bottom plot
             if ax != self.disk_ax:
                 ax.set_xticklabels([])
             else:
                 # Set x-axis label color for the bottom plot
-                ax.set_xlabel("Seconds ago", color=self.theme["text"], fontsize=8)
+                ax.set_xlabel("Seconds ago", color=text_color, fontsize=8)
                 
             # Set y-axis label color
-            ax.set_ylabel("Usage %", color=self.theme["text"], fontsize=8)
+            ax.set_ylabel("Usage %", color=text_color, fontsize=8)
         
         # Set less vertical distance between subplots
         self.fig.tight_layout(pad=0.5)  # Reduce padding between subplots
@@ -1784,18 +1757,20 @@ class ProcessMonitorApp:
         
         # Create attractive area plots with gradient fill
         self.cpu_line = self.cpu_ax.plot(x, cpu_init, color=self.theme["cpu_color"], linewidth=1.5)[0]
-        self.cpu_fill = self.cpu_ax.fill_between(x, 0, cpu_init, color=self.theme["cpu_color"], alpha=0.3)
+        self.cpu_fill = self.cpu_ax.fill_between(x, 0, cpu_init, color=self.theme["cpu_color"], alpha=0.2)
         
         self.mem_line = self.mem_ax.plot(x, mem_init, color=self.theme["mem_color"], linewidth=1.5)[0]
-        self.mem_fill = self.mem_ax.fill_between(x, 0, mem_init, color=self.theme["mem_color"], alpha=0.3)
+        self.mem_fill = self.mem_ax.fill_between(x, 0, mem_init, color=self.theme["mem_color"], alpha=0.2)
         
         self.disk_line = self.disk_ax.plot(x, disk_init, color=self.theme["disk_color"], linewidth=1.5)[0]
-        self.disk_fill = self.disk_ax.fill_between(x, 0, disk_init, color=self.theme["disk_color"], alpha=0.3)
+        self.disk_fill = self.disk_ax.fill_between(x, 0, disk_init, color=self.theme["disk_color"], alpha=0.2)
         
-        # Create canvas
+        # Create canvas with matching background
         self.canvas = FigureCanvasTkAgg(self.fig, graph_frame)
         self.canvas.draw()
-        self.canvas.get_tk_widget().pack(fill="both", expand=True)
+        canvas_widget = self.canvas.get_tk_widget()
+        canvas_widget.configure(bg=chart_bg_color, highlightbackground=chart_bg_color, highlightcolor=chart_bg_color)
+        canvas_widget.pack(fill="both", expand=True)
         
         # Create a frame for the legend/controls
         controls_frame = ttk.Frame(parent, style="Card.TFrame")
@@ -1834,7 +1809,52 @@ class ProcessMonitorApp:
 
     def _initialize_empty_plots(self):
         """Initialize empty performance plots with proper styling"""
-        # Generate sample data (empty)
+        # Get theme colors from the current theme
+        chart_bg_color = self.theme["chart_bg"]  # Background color for charts
+        text_color = self.theme["text"]  # Text color from theme
+        grid_color = self.theme["grid_color"]  # Grid color from theme
+        
+        # Create a figure with slightly smaller height to fit more on screen
+        self.fig = plt.Figure(figsize=(7, 3.8), dpi=100)
+        self.fig.patch.set_facecolor(chart_bg_color)
+        
+        # Create subplots
+        self.cpu_ax = self.fig.add_subplot(311)
+        self.mem_ax = self.fig.add_subplot(312)
+        self.disk_ax = self.fig.add_subplot(313)
+        
+        # Configure plots with improved styling
+        for ax, title in [
+            (self.cpu_ax, "CPU Usage (%)"),
+            (self.mem_ax, "Memory Usage (%)"),
+            (self.disk_ax, "Disk Usage (%)")
+        ]:
+            ax.set_facecolor(chart_bg_color)
+            ax.set_title(title, fontsize=9, color=text_color)
+            ax.set_xlim(-60, 0)  # 60 seconds default
+            ax.set_ylim(0, 100)
+            ax.tick_params(axis='both', colors=text_color, labelsize=8)
+            ax.grid(True, linestyle='--', color=grid_color, alpha=0.6)
+            
+            # Update spines color to match theme
+            for spine in ax.spines.values():
+                spine.set_color(grid_color)
+                spine.set_linewidth(0.5)
+            
+            # Remove x-labels except for the bottom plot
+            if ax != self.disk_ax:
+                ax.set_xticklabels([])
+            else:
+                # Set x-axis label color for the bottom plot
+                ax.set_xlabel("Seconds ago", color=text_color, fontsize=8)
+                
+            # Set y-axis label color
+            ax.set_ylabel("Usage %", color=text_color, fontsize=8)
+        
+        # Set less vertical distance between subplots
+        self.fig.tight_layout(pad=0.5)
+        
+        # Create empty data
         x = []
         y = []
         
@@ -1853,11 +1873,13 @@ class ProcessMonitorApp:
 
     def update_performance_graph_colors(self):
         """Update performance graph colors based on theme and visibility settings"""
+        # Get theme colors from the current theme
+        chart_bg_color = self.theme["chart_bg"]  # Background color for charts
+        text_color = self.theme["text"]  # Text color from theme
+        grid_color = self.theme["grid_color"]  # Grid color from theme
+        
         # Update figure background color
-        if "bg_color" in self.theme:
-            self.fig.patch.set_facecolor(self.theme["bg_color"])
-        else:
-            self.fig.patch.set_facecolor(self.theme["card_bg"])
+        self.fig.patch.set_facecolor(chart_bg_color)
         
         # Update all text colors and styles for each subplot
         for ax, title in [
@@ -1866,22 +1888,22 @@ class ProcessMonitorApp:
             (self.disk_ax, "Disk Usage (%)")
         ]:
             # Update title color
-            ax.set_title(title, color=self.theme["text"], fontsize=9)
+            ax.set_title(title, color=text_color, fontsize=9)
             
             # Update tick colors
-            ax.tick_params(axis='both', colors=self.theme["text"], labelsize=8)
+            ax.tick_params(axis='both', colors=text_color, labelsize=8)
             
             # Update spine colors
             for spine in ax.spines.values():
-                spine.set_color(self.theme["text"])
+                spine.set_color(grid_color)
                 
-                # Update grid color
-            ax.grid(True, which='major', color=self.theme["grid_color"], linestyle='--', linewidth=0.5, alpha=0.4)
+            # Update grid color
+            ax.grid(True, which='major', color=grid_color, linestyle='--', linewidth=0.5, alpha=0.6)
             
             # Update axis labels color
             if ax == self.disk_ax:
-                ax.set_xlabel("Seconds ago", color=self.theme["text"], fontsize=8)
-            ax.set_ylabel("Usage %", color=self.theme["text"], fontsize=8)
+                ax.set_xlabel("Seconds ago", color=text_color, fontsize=8)
+            ax.set_ylabel("Usage %", color=text_color, fontsize=8)
         
         # Update visibility based on checkboxes
         self.cpu_line.set_visible(self.show_cpu_var.get())
@@ -2162,18 +2184,16 @@ class ProcessMonitorApp:
     def create_process_intelligence(self, parent):
         """Create the Process Intelligence section with relationship graph visualization"""
         # Create header with tabs for different views
-<<<<<<< HEAD
-            header_frame = ttk.Frame(parent, style="Card.TFrame")
-=======
         header_frame = ttk.Frame(parent, style="Card.TFrame")
->>>>>>> 0194478 (Updated multiple files with improvements)
         header_frame.pack(fill="x", padx=5, pady=(5, 0))
             
         # Add title
-        title_label = ttk.Label(header_frame, 
-                text="PROCESS INTELLIGENCE",
-                style="Title.TLabel",
-                              font=("Segoe UI", 12, "bold"))
+        title_label = ttk.Label(
+            header_frame,
+            text="PROCESS INTELLIGENCE",
+            style="Title.TLabel",
+            font=("Segoe UI", 12, "bold")
+        )
         title_label.pack(anchor="center", pady=(0, 5))
         
         # Add tabs for different views
@@ -2267,9 +2287,9 @@ class ProcessMonitorApp:
         self.refresh_time = ttk.Label(
             refresh_frame,
             text=datetime.now().strftime("%H:%M:%S"),
-            style="Info.TLabel",
-                font=("Segoe UI", 8)
-            )
+            style="Info.TLabel", 
+            font=("Segoe UI", 8)
+        )
         self.refresh_time.pack(side="left", padx=(5, 0))
         
         # Right info panel
@@ -2328,6 +2348,7 @@ class ProcessMonitorApp:
             # Update uptime
             boot_time = psutil.boot_time()
             uptime_seconds = time.time() - boot_time
+            
             days, remainder = divmod(uptime_seconds, 86400)
             hours, remainder = divmod(remainder, 3600)
             minutes, seconds = divmod(remainder, 60)
@@ -2378,20 +2399,6 @@ class ProcessMonitorApp:
         """Create the Resource Usage tab content"""
             # Time label with more details
         time_frame = ttk.Frame(self.resource_usage_frame, style="Card.TFrame")
-<<<<<<< HEAD
-            time_frame.pack(fill="x", pady=(0, 5))
-            
-            time_icon = ttk.Label(time_frame, text="⏱️", style="TLabel")
-            time_icon.pack(side="left", padx=(0, 5))
-            
-            time_label = ttk.Label(
-                time_frame,
-                text="Resource Usage Analysis - 01:25:38",
-                style="InfoTitle.TLabel",
-                font=("Segoe UI", 9, "bold")
-            )
-            time_label.pack(side="left")
-=======
         time_frame.pack(fill="x", pady=(0, 5))
         
         time_icon = ttk.Label(time_frame, text="⏱️", style="TLabel")
@@ -2404,7 +2411,6 @@ class ProcessMonitorApp:
             font=("Segoe UI", 9, "bold")
         )
         time_label.pack(side="left")
->>>>>>> 0194478 (Updated multiple files with improvements)
             
             # Add a separator for better organization
         ttk.Separator(self.resource_usage_frame, orient="horizontal").pack(fill="x", pady=3)
@@ -2413,23 +2419,6 @@ class ProcessMonitorApp:
         summary_frame = ttk.Frame(self.resource_usage_frame, style="Card.TFrame")
         summary_frame.pack(fill="x", pady=(0, 5))
             
-<<<<<<< HEAD
-            summary_icon = ttk.Label(summary_frame, text="📋", style="TLabel")
-            summary_icon.pack(side="left", padx=(0, 5))
-            
-            summary_title = ttk.Label(
-                summary_frame,
-                text="SYSTEM SUMMARY:",
-                style="InfoTitle.TLabel",
-                font=("Segoe UI", 9, "bold")
-            )
-            summary_title.pack(side="left")
-            
-            # Summary info
-            total_processes = len(list(psutil.process_iter()))
-            mem = psutil.virtual_memory()
-            summary_info = ttk.Label(
-=======
         summary_icon = ttk.Label(summary_frame, text="📋", style="TLabel")
         summary_icon.pack(side="left", padx=(0, 5))
         
@@ -2445,40 +2434,18 @@ class ProcessMonitorApp:
         total_processes = len(list(psutil.process_iter()))
         mem = psutil.virtual_memory()
         summary_info = ttk.Label(
->>>>>>> 0194478 (Updated multiple files with improvements)
         self.resource_usage_frame,
                 text=f"• Total processes: {total_processes}\n• Memory in use: {mem.percent}%\n• Average CPU load: {psutil.cpu_percent(interval=0.1)}%",
                 style="Info.TLabel",
                 font=("Segoe UI", 9)
             )
-<<<<<<< HEAD
-            summary_info.pack(anchor="w", padx=(20, 0))
-=======
         summary_info.pack(anchor="w", padx=(20, 0))
->>>>>>> 0194478 (Updated multiple files with improvements)
             
             # Add a separator for better organization
         ttk.Separator(self.resource_usage_frame, orient="horizontal").pack(fill="x", pady=3)
             
             # CPU Intensive Processes section
         cpu_frame = ttk.Frame(self.resource_usage_frame, style="Card.TFrame")
-<<<<<<< HEAD
-            cpu_frame.pack(fill="x", pady=(0, 5))
-            
-            cpu_icon = ttk.Label(cpu_frame, text="🔘", style="TLabel")
-            cpu_icon.pack(side="left", padx=(0, 5))
-            
-            cpu_title = ttk.Label(
-                cpu_frame,
-                text="CPU INTENSIVE PROCESSES:",
-                style="InfoTitle.TLabel",
-                font=("Segoe UI", 9, "bold")
-            )
-            cpu_title.pack(side="left")
-            
-            # CPU process info
-            cpu_info = ttk.Label(
-=======
         cpu_frame.pack(fill="x", pady=(0, 5))
         
         cpu_icon = ttk.Label(cpu_frame, text="🔘", style="TLabel")
@@ -2494,34 +2461,17 @@ class ProcessMonitorApp:
         
         # CPU process info
         cpu_info = ttk.Label(
->>>>>>> 0194478 (Updated multiple files with improvements)
         self.resource_usage_frame,
                 text="• No significant CPU usage detected",
                 style="Info.TLabel",
                 font=("Segoe UI", 9)
             )
-<<<<<<< HEAD
-            cpu_info.pack(anchor="w", padx=(20, 0))
-=======
         cpu_info.pack(anchor="w", padx=(20, 0))
->>>>>>> 0194478 (Updated multiple files with improvements)
             
             # Memory Intensive Processes section
         mem_frame = ttk.Frame(self.resource_usage_frame, style="Card.TFrame")
         mem_frame.pack(fill="x", pady=(5, 5))
             
-<<<<<<< HEAD
-            mem_icon = ttk.Label(mem_frame, text="📊", style="TLabel")
-            mem_icon.pack(side="left", padx=(0, 5))
-            
-            mem_title = ttk.Label(
-                mem_frame,
-                text="MEMORY INTENSIVE PROCESSES:",
-                style="InfoTitle.TLabel",
-                font=("Segoe UI", 9, "bold")
-            )
-            mem_title.pack(side="left")
-=======
         mem_icon = ttk.Label(mem_frame, text="📊", style="TLabel")
         mem_icon.pack(side="left", padx=(0, 5))
         
@@ -2532,8 +2482,7 @@ class ProcessMonitorApp:
             font=("Segoe UI", 9, "bold")
         )
         mem_title.pack(side="left")
->>>>>>> 0194478 (Updated multiple files with improvements)
-            
+        
         # Memory process info with multiple entries - keep this compact
         mem_info = ttk.Label(
             self.resource_usage_frame,
@@ -2545,23 +2494,6 @@ class ProcessMonitorApp:
         
         # Resource Trends section
         trend_frame = ttk.Frame(self.resource_usage_frame, style="Card.TFrame")
-<<<<<<< HEAD
-            trend_frame.pack(fill="x", pady=(5, 5))
-            
-            trend_icon = ttk.Label(trend_frame, text="📈", style="TLabel")
-            trend_icon.pack(side="left", padx=(0, 5))
-            
-            trend_title = ttk.Label(
-                trend_frame,
-                text="RESOURCE TRENDS:",
-                style="InfoTitle.TLabel",
-                font=("Segoe UI", 9, "bold")
-            )
-            trend_title.pack(side="left")
-            
-            # Trend info
-            trend_info = ttk.Label(
-=======
         trend_frame.pack(fill="x", pady=(5, 5))
         
         trend_icon = ttk.Label(trend_frame, text="📈", style="TLabel")
@@ -2577,46 +2509,23 @@ class ProcessMonitorApp:
         
         # Trend info
         trend_info = ttk.Label(
->>>>>>> 0194478 (Updated multiple files with improvements)
         self.resource_usage_frame,
                 text="• CPU usage: Stable\n• Memory usage: Increasing slightly\n• Disk activity: Low",
                 style="Info.TLabel",
                 font=("Segoe UI", 9)
             )
-<<<<<<< HEAD
-            trend_info.pack(anchor="w", padx=(20, 0))
-            
-        # Bottom controls
-        controls_frame = ttk.Frame(self.resource_usage_frame, style="Card.TFrame")
-            controls_frame.pack(fill="x", side="bottom", padx=5, pady=5)
-            
-            refresh_btn = ttk.Button(
-=======
         trend_info.pack(anchor="w", padx=(20, 0))
             
         # Bottom controls
         controls_frame = ttk.Frame(self.resource_usage_frame, style="Card.TFrame")
         controls_frame.pack(fill="x", side="bottom", padx=5, pady=5)
-            
+        
         refresh_btn = ttk.Button(
->>>>>>> 0194478 (Updated multiple files with improvements)
-                controls_frame,
-                text="Refresh Analysis",
-        style="Accent.TButton",
-        command=self.refresh_dashboard
-            )
-<<<<<<< HEAD
-            refresh_btn.pack(side="left")
-            
-            # Add timestamp for last refresh
-            last_refresh = ttk.Label(
-                controls_frame,
-                text=f"Last updated: {datetime.now().strftime('%H:%M:%S')}",
-                style="Info.TLabel", 
-                font=("Segoe UI", 8)
-            )
-            last_refresh.pack(side="left", padx=(10, 0))
-=======
+            controls_frame,
+            text="Refresh Analysis",
+            style="Accent.TButton",
+            command=self.refresh_dashboard
+        )
         refresh_btn.pack(side="left")
         
         # Add timestamp for last refresh
@@ -2627,7 +2536,6 @@ class ProcessMonitorApp:
             font=("Segoe UI", 8)
         )
         last_refresh.pack(side="left", padx=(10, 0))
->>>>>>> 0194478 (Updated multiple files with improvements)
             
     def create_process_relations_tab(self):
         """Create the Process Relations tab content with a simplified view"""
@@ -2657,19 +2565,9 @@ class ProcessMonitorApp:
         select_frame = ttk.Frame(self.process_relations_frame, style="Card.TFrame")
         select_frame.pack(fill="x", pady=(0, 5))
         
-        select_label = ttk.Label(
-            select_frame,
-            text="Select Process:",
-                style="InfoTitle.TLabel"
-            )
-        select_label.pack(side="left", padx=(0, 5))
-        
-        # Get list of processes
+        self.selected_process = tk.StringVar()
         process_list = [p.name() for p in psutil.process_iter()]
         process_list = sorted(list(set(process_list)))  # Remove duplicates
-        
-        # Process dropdown
-        self.selected_process = tk.StringVar()
         if process_list:
             self.selected_process.set(process_list[0])
             
@@ -2680,15 +2578,16 @@ class ProcessMonitorApp:
             state="readonly",
             width=25
         )
-        process_dropdown.pack(side="left", padx=(0, 5))
+        process_dropdown.pack(side="left")
         
         # Visualize button
         visualize_btn = ttk.Button(
             select_frame,
             text="Visualize",
-            style="Accent.TButton"
+            style="Accent.TButton",
+            command=self.visualize_selected_process
         )
-        visualize_btn.pack(side="left")
+        visualize_btn.pack(side="left", padx=(10, 0))
         
         # Placeholder for visualization area
         vis_frame = ttk.Frame(self.process_relations_frame, style="Card.TFrame", height=200)
@@ -2777,202 +2676,38 @@ class ProcessMonitorApp:
             )
             rec_label.pack(anchor="w", padx=(10, 0))
 
-    def create_ai_insights_section(self):
-        """Create the AI Insights section with a clean, modern layout similar to Smart Recommendations"""
-        # Create main frame
-        self.ai_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.ai_frame, text="AI Insights")
-
-        # Create title with accent color
-        title_label = ttk.Label(self.ai_frame, 
-                              text="AI INSIGHTS",
-                              font=("Segoe UI", 16, "bold"),
-                              foreground="#0078D4",
-                              style="Title.TLabel")
-        title_label.pack(fill="x", padx=15, pady=(10, 5))
-
-        # Create main content frame
-        content_frame = ttk.Frame(self.ai_frame, style="Card.TFrame")
-        content_frame.pack(fill="both", expand=True, padx=15, pady=10)
-
-        # Status Section
-        status_frame = ttk.Frame(content_frame, style="Card.TFrame")
-        status_frame.pack(fill="x", padx=10, pady=5)
-
-        # Collection Status with bullet
-        collection_frame = ttk.Frame(status_frame)
-        collection_frame.pack(fill="x", pady=2)
-        
-        collection_bullet = ttk.Label(collection_frame, text="○", 
-                                    font=("Segoe UI", 9),
-                                    foreground="#0078D4")
-        collection_bullet.pack(side="left", padx=(0, 5))
-        
-        collection_label = ttk.Label(collection_frame, text="Collecting data:",
-                                   font=("Segoe UI", 9))
-        collection_label.pack(side="left")
-        
-        self.collection_status = ttk.Label(collection_frame, text="0.1 mins",
-                                         font=("Segoe UI", 9))
-        self.collection_status.pack(side="left", padx=(5, 0))
-
-        # Model Training Status
-        training_frame = ttk.Frame(status_frame)
-        training_frame.pack(fill="x", pady=2)
-        
-        training_bullet = ttk.Label(training_frame, text="○",
-                                  font=("Segoe UI", 9),
-                                  foreground="#0078D4")
-        training_bullet.pack(side="left", padx=(0, 5))
-        
-        training_label = ttk.Label(training_frame, text="Model training:",
-                                 font=("Segoe UI", 9))
-        training_label.pack(side="left")
-        
-        self.training_status = ttk.Label(training_frame, text="Waiting for data...",
-                                       font=("Segoe UI", 9))
-        self.training_status.pack(side="left", padx=(5, 0))
-
-        # Prediction Status
-        prediction_frame = ttk.Frame(status_frame)
-        prediction_frame.pack(fill="x", pady=2)
-        
-        prediction_bullet = ttk.Label(prediction_frame, text="○",
-                                    font=("Segoe UI", 9),
-                                    foreground="#0078D4")
-        prediction_bullet.pack(side="left", padx=(0, 5))
-        
-        prediction_label = ttk.Label(prediction_frame, text="Prediction:",
-                                   font=("Segoe UI", 9))
-        prediction_label.pack(side="left")
-        
-        self.prediction_status = ttk.Label(prediction_frame, text="Waiting for training...",
-                                         font=("Segoe UI", 9))
-        self.prediction_status.pack(side="left", padx=(5, 0))
-
-        # System Status
-        system_frame = ttk.Frame(status_frame)
-        system_frame.pack(fill="x", pady=2)
-        
-        system_bullet = ttk.Label(system_frame, text="⬚",
-                                font=("Segoe UI", 9),
-                                foreground="#0078D4")
-        system_bullet.pack(side="left", padx=(0, 5))
-        
-        system_label = ttk.Label(system_frame, text="System Status:",
-                               font=("Segoe UI", 9))
-        system_label.pack(side="left")
-        
-        self.system_status = ttk.Label(system_frame, text="Collecting initial data...",
-                                     font=("Segoe UI", 9))
-        self.system_status.pack(side="left", padx=(5, 0))
-
-        # Separator after status section
-        ttk.Separator(content_frame, orient="horizontal").pack(fill="x", padx=10, pady=10)
-
-        # Analysis Actions Section
-        actions_frame = ttk.Frame(content_frame)
-        actions_frame.pack(fill="x", padx=10, pady=5)
-
-        # Create action buttons with equal width
-        button_frame = ttk.Frame(actions_frame)
-        button_frame.pack(fill="x")
-        button_frame.grid_columnconfigure((0, 1, 2), weight=1)
-
-        self.anomaly_btn = ttk.Button(button_frame,
-                                    text="Anomaly Detection",
-                                    style="AI.TButton",
-                                    command=lambda: self.handle_ai_button("anomaly"))
-        self.anomaly_btn.grid(row=0, column=0, padx=5, sticky="ew")
-
-        self.results_btn = ttk.Button(button_frame,
-                                    text="Results",
-                                    style="AI.TButton",
-                                    command=lambda: self.handle_ai_button("results"))
-        self.results_btn.grid(row=0, column=1, padx=5, sticky="ew")
-
-        self.analysis_btn = ttk.Button(button_frame,
-                                     text="Analysis",
-                                     style="AI.TButton",
-                                     command=lambda: self.handle_ai_button("analysis"))
-        self.analysis_btn.grid(row=0, column=2, padx=5, sticky="ew")
-
-        # Status message at bottom
-        self.ai_status_msg = ttk.Label(content_frame,
-                                     text="Collecting data for predictions...",
-                                     font=("Segoe UI", 9),
-                                     foreground="#666666")
-        self.ai_status_msg.pack(side="bottom", pady=10)
-
-        # Start the AI timeline update
-        self.update_ai_timeline()
-
-    def handle_ai_button(self, action):
-        """Handle AI button clicks with visual feedback"""
-        # Reset all buttons to normal style
-        self.anomaly_btn.configure(style="AI.TButton")
-        self.results_btn.configure(style="AI.TButton")
-        self.analysis_btn.configure(style="AI.TButton")
-        
-        # Update button states and status message
-        if action == "anomaly":
-            self.anomaly_btn.configure(style="AI.TButton.Selected")
-            self.ai_status_msg.configure(text="Analyzing system for anomalies...")
-            # Here you would call your anomaly detection logic
-            
-        elif action == "results":
-            self.results_btn.configure(style="AI.TButton.Selected")
-            self.ai_status_msg.configure(text="Generating AI analysis results...")
-            # Here you would call your results generation logic
-            
-        elif action == "analysis":
-            self.analysis_btn.configure(style="AI.TButton.Selected")
-            self.ai_status_msg.configure(text="Performing detailed system analysis...")
-            # Here you would call your analysis logic
-
-    def update_ai_timeline(self):
-        """Update AI timeline with real-time status changes and handle errors gracefully"""
+    def visualize_selected_process(self):
+        """Visualize the selected process"""
         try:
-            # Get current collection time and increment with error handling
-            try:
-                current_time = self.collection_status.cget("text")
-                time_value = float(current_time.split()[0])
-                time_value += 0.1  # Increment by 0.1 minutes
-            except (ValueError, AttributeError, IndexError):
-                # If there's any error getting the time, start from 0
-                time_value = 0.1
-
-            # Update collection status safely
-            try:
-                self.collection_status.configure(text=f"{time_value:.1f} mins")
-            except Exception:
-                pass  # Skip if update fails
-
-            # Update other statuses based on timeline with error handling
-            try:
-                if time_value >= 0.5:  # After 30 seconds
-                    self.training_status.configure(text="Initializing training...")
+            # Get the selected process
+            selected_process = self.selected_process.get()
+            
+            if not selected_process:
+                messagebox.showwarning("Warning", "Please select a process to visualize")
+                return
                 
-                if time_value >= 1.0:  # After 1 minute
-                    self.training_status.configure(text="Training in progress...")
-                    self.system_status.configure(text="Analyzing patterns...")
-                
-                if time_value >= 2.0:  # After 2 minutes
-                    self.prediction_status.configure(text="Ready")
-                    self.system_status.configure(text="System monitored")
-                    self.ai_status_msg.configure(text="AI analysis ready")
-            except Exception as status_error:
-                print(f"Error updating status messages: {status_error}")
-
-        except Exception as e:
-            print(f"Error in AI timeline update: {e}")
-        finally:
-            # Always schedule the next update, even if there was an error
-            try:
-                self.after(30000, self.update_ai_timeline)
-            except Exception:
-                # If scheduling fails, try one more time with root
+            # Find the process in the process list to get its PID
+            for proc in psutil.process_iter(['pid', 'name']):
                 try:
-                    self.root.after(30000, self.update_ai_timeline)
-                except Exception as e:
-                    print(f"Failed to schedule next AI timeline update: {e}")
+                    if proc.info['name'] == selected_process:
+                        # Create a fake selection in the pi_tree
+                        if hasattr(self, 'process_intelligence') and hasattr(self.process_intelligence, 'pi_tree'):
+                            # Find if this process exists in the tree
+                            for item in self.process_intelligence.pi_tree.get_children():
+                                item_values = self.process_intelligence.pi_tree.item(item)["values"]
+                                if len(item_values) > 0 and str(proc.info['pid']) == str(item_values[0]):
+                                    # Select this item
+                                    self.process_intelligence.pi_tree.selection_set(item)
+                                    # Call the show_process_relationships method
+                                    self.process_intelligence.show_process_relationships()
+                                    return
+                            
+                            # If we didn't find the process in the tree, show a message
+                            messagebox.showinfo("Info", f"Process {selected_process} not found in the process intelligence tree. Try selecting it directly from the Process Intelligence tab.")
+                            return
+                except (psutil.NoSuchProcess, psutil.AccessDenied, IndexError):
+                    continue
+            
+            messagebox.showinfo("Info", f"Process {selected_process} not found. It may have terminated.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Error visualizing process: {str(e)}")
