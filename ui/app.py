@@ -70,6 +70,12 @@ class ProcessMonitorApp:
         # Set up closing event
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         
+        # Initialize AI model training flag
+        self.is_model_trained = False
+        
+        # Initialize flag to track if we're showing AI results
+        self.showing_ai_results = False
+        
         # Data storage
         self.cpu_usage_history = []
         self.mem_usage_history = []
@@ -82,6 +88,7 @@ class ProcessMonitorApp:
         self.resource_predictor = ResourcePredictor()
         self.anomaly_detector = AnomalyDetector()
         self.recent_anomalies = []
+        self.is_model_trained = False  # Flag to track if AI model is trained
         
         # Fix font issues
         mpl.rcParams['font.family'] = 'DejaVu Sans'
@@ -624,18 +631,72 @@ class ProcessMonitorApp:
             if hasattr(self, 'start_time'):
                 collection_time = (time.time() - self.start_time.timestamp()) / 60
                 
-                # Determine AI status based on data collection time
-                if collection_time < 1:
-                    training_status = "Waiting for data..."
-                    prediction_status = "Waiting for training..."
-                    system_status = "Collecting initial data..."
-                elif collection_time < 2:
-                    training_status = "Training in progress..."
-                    prediction_status = "Waiting for training..."
-                    system_status = "Learning system patterns..."
-                else:
-                    training_status = "Complete"
-                    prediction_status = "Generating predictions"
+                # Check if model is already trained - if so, maintain that state
+                if hasattr(self, 'is_model_trained') and self.is_model_trained:
+                    # Model is already trained, maintain the trained state
+                    timestamp = datetime.now().strftime("%H:%M:%S")
+                    training_status = f"[COMPLETE] Model trained successfully at {timestamp}"
+                    prediction_status = "[ACTIVE] Real-time predictions enabled"
+                    system_status = "[STATUS] System monitoring active - no anomalies detected"
+                # Otherwise, generate status based on collection time
+                elif collection_time < 0.5:
+                    training_status = "[INIT] Waiting for sufficient data samples..."
+                    prediction_status = "[STANDBY] Model training required before predictions"
+                    system_status = "[LOG] Collecting initial system metrics..."
+                    
+                    # Disable prediction buttons in the UI
+                    self.is_model_trained = False
+                    
+                    # Disable AI buttons in the UI if top_section exists
+                    if hasattr(self, 'top_section') and hasattr(self.top_section, 'enable_ai_buttons'):
+                        self.top_section.enable_ai_buttons(False)
+                # Only process these states if model is not already trained
+                elif not self.is_model_trained and collection_time < 1.0:
+                    training_status = "[25%] Preprocessing training data..."
+                    prediction_status = "[WAIT] Initializing prediction engine"
+                    system_status = "[LOG] Building system baseline profile"
+                    
+                    # Disable prediction buttons in the UI
+                    self.is_model_trained = False
+                    
+                    # Disable AI buttons in the UI if top_section exists
+                    if hasattr(self, 'top_section') and hasattr(self.top_section, 'enable_ai_buttons'):
+                        self.top_section.enable_ai_buttons(False)
+                elif not self.is_model_trained and collection_time < 1.5:
+                    training_status = "[50%] Training model on collected samples..."
+                    prediction_status = "[WAIT] Training in progress - ETA: {:.1f}s".format(2.0 - collection_time)
+                    system_status = "[LOG] Analyzing resource usage patterns"
+                    
+                    # Disable prediction buttons in the UI
+                    self.is_model_trained = False
+                    
+                    # Disable AI buttons in the UI if top_section exists
+                    if hasattr(self, 'top_section') and hasattr(self.top_section, 'enable_ai_buttons'):
+                        self.top_section.enable_ai_buttons(False)
+                elif not self.is_model_trained and collection_time < 2.0:
+                    training_status = "[75%] Optimizing model parameters..."
+                    prediction_status = "[INIT] Preparing prediction pipeline"
+                    system_status = "[LOG] Finalizing system behavior analysis"
+                    
+                    # Disable prediction buttons in the UI
+                    self.is_model_trained = False
+                    
+                    # Disable AI buttons in the UI if top_section exists
+                    if hasattr(self, 'top_section') and hasattr(self.top_section, 'enable_ai_buttons'):
+                        self.top_section.enable_ai_buttons(False)
+                # If we've reached this point and the model is not yet trained, mark it as trained
+                elif not self.is_model_trained and collection_time >= 2.0:
+                    # Format timestamp for logs
+                    timestamp = datetime.now().strftime("%H:%M:%S")
+                    training_status = f"[COMPLETE] Model trained successfully at {timestamp}"
+                    prediction_status = "[ACTIVE] Real-time predictions enabled"
+                    
+                    # Enable prediction buttons in the UI
+                    self.is_model_trained = True
+                    
+                    # Enable AI buttons in the UI if top_section exists
+                    if hasattr(self, 'top_section') and hasattr(self.top_section, 'enable_ai_buttons'):
+                        self.top_section.enable_ai_buttons(True)
                     
                     # Get system status based on your anomaly detection
                     if hasattr(self, 'anomaly_detector') and self.anomaly_detector.is_trained:
@@ -645,19 +706,33 @@ class ProcessMonitorApp:
                             'disk': self.disk_usage_history[-1] if self.disk_usage_history else 0
                         }
                         anomaly_result = self.anomaly_detector.check_anomaly(latest_data)
-                        system_status = "System behavior normal" if not anomaly_result['is_anomaly'] else "Anomaly detected!"
+                        if not anomaly_result['is_anomaly']:
+                            system_status = f"[STATUS] System behavior within normal parameters"
+                        else:
+                            # Add more details about the anomaly
+                            anomaly_type = "CPU" if latest_data['cpu'] > 80 else "Memory" if latest_data['memory'] > 80 else "Disk"
+                            system_status = f"[ALERT] {anomaly_type} usage anomaly detected at {timestamp}!"
                     else:
-                        system_status = "System behavior normal"
+                        system_status = "[STATUS] System monitoring active - no anomalies detected"
                 
-                # Update the timeline in the UI if the method exists
+                # Try to update the AI timeline in the UI
                 try:
-                    if hasattr(self, 'top_section') and hasattr(self.top_section, 'update_ai_timeline'):
-                        self.top_section.update_ai_timeline(
-                            collection_time=collection_time,
-                            training_status=training_status,
-                            prediction_status=prediction_status,
-                            system_status=system_status
-                        )
+                    # Only update if we're not showing AI results or if we don't have that attribute yet
+                    if not hasattr(self, 'showing_ai_results') or not self.showing_ai_results:
+                        if hasattr(self, 'top_section') and hasattr(self.top_section, 'update_ai_timeline'):
+                            self.top_section.update_ai_timeline(
+                                collection_time=collection_time,
+                                training_status=training_status,
+                                prediction_status=prediction_status,
+                                system_status=system_status
+                            )
+                    else:
+                        # Only update the training status labels, not the status message
+                        if hasattr(self, 'top_section'):
+                            if hasattr(self.top_section, 'training_status'):
+                                self.top_section.training_status.config(text=training_status)
+                            if hasattr(self.top_section, 'prediction_status'):
+                                self.top_section.prediction_status.config(text=prediction_status)
                 except Exception as e:
                     print(f"Error updating AI timeline: {e}")
                     # Fallback to basic status update
@@ -1075,6 +1150,9 @@ class ProcessMonitorApp:
 
     def export_process_list(self):
         """Export the current process list to a CSV file"""
+        # Print debug info
+        print("Export process list button clicked")
+        
         # Ask for file location
         file_path = filedialog.asksaveasfilename(
             defaultextension=".csv",
@@ -1083,10 +1161,35 @@ class ProcessMonitorApp:
         )
         
         if not file_path:
+            print("Export cancelled by user")
             return  # User cancelled
         
         try:
-            processes = self.middle_section.get_all_processes()
+            # Get processes directly if get_all_processes method is not available
+            if hasattr(self.middle_section, 'get_all_processes'):
+                print("Using middle_section.get_all_processes()")
+                processes = self.middle_section.get_all_processes()
+            else:
+                print("Collecting processes directly")
+                processes = []
+                filter_text = self.middle_section.filter_var.get().lower() if hasattr(self.middle_section, 'filter_var') else ""
+                
+                # Get process list directly
+                for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_info', 'status']):
+                    try:
+                        proc_info = proc.info
+                        if filter_text in proc_info['name'].lower():
+                            processes.append([
+                                proc_info['pid'],
+                                proc_info['name'],
+                                f"{proc_info['cpu_percent']:.1f}",
+                                f"{proc_info['memory_info'].rss / (1024 * 1024):.1f}",
+                                proc_info['status']
+                            ])
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+            
+            print(f"Exporting {len(processes)} processes to {file_path}")
             
             with open(file_path, 'w', newline='') as csvfile:
                 writer = csv.writer(csvfile)
@@ -1099,9 +1202,22 @@ class ProcessMonitorApp:
                     writer.writerow(process)
             
             messagebox.showinfo("Success", f"Process list exported to {file_path}")
+            print("Export completed successfully")
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to export: {str(e)}")
+            error_message = f"Failed to export: {str(e)}"
+            print(f"Export error: {error_message}")
+            messagebox.showerror("Error", error_message)
         
+    def reset_ai_results(self, event=None):
+        """Reset the showing_ai_results flag when user interacts with other parts of the UI"""
+        try:
+            self.showing_ai_results = False
+            # If top_section exists, also call its reset method
+            if hasattr(self, 'top_section') and hasattr(self.top_section, 'reset_ai_results_flag'):
+                self.top_section.reset_ai_results_flag()
+        except Exception as e:
+            print(f"Error resetting AI results flag: {e}")
+    
     def on_closing(self):
         """Handle window closing"""
         self.root.destroy() 
@@ -1557,6 +1673,14 @@ class ProcessMonitorApp:
                                 width=6)
         details_btn.pack(side="left", padx=2)
         
+        # Export button - make it VERY prominent
+        export_btn = ttk.Button(button_frame, 
+                               text="💾 EXPORT CSV", 
+                               command=self.export_process_list,
+                               style="Success.TButton",
+                               width=15)
+        export_btn.pack(side="left", padx=10)
+        
         # System info (right side)
         self.system_info_label = ttk.Label(
             controls_row, 
@@ -1912,16 +2036,22 @@ class ProcessMonitorApp:
         chart_bg_color = self.theme["chart_bg"]  # Background color for charts
         text_color = self.theme["text"]  # Text color from theme
         grid_color = self.theme["grid_color"]  # Grid color from theme
+        cpu_color = self.theme["cpu_color"]  # CPU line color
+        mem_color = self.theme["mem_color"]  # Memory line color
+        disk_color = self.theme["disk_color"]  # Disk line color
         
         # Update figure background color
         self.fig.patch.set_facecolor(chart_bg_color)
         
         # Update all text colors and styles for each subplot
-        for ax, title in [
-            (self.cpu_ax, "CPU Usage (%)"),
-            (self.mem_ax, "Memory Usage (%)"),
-            (self.disk_ax, "Disk Usage (%)")
+        for ax, title, line, color in [
+            (self.cpu_ax, "CPU Usage (%)", self.cpu_line, cpu_color),
+            (self.mem_ax, "Memory Usage (%)", self.mem_line, mem_color),
+            (self.disk_ax, "Disk Usage (%)", self.disk_line, disk_color)
         ]:
+            # Update background color
+            ax.set_facecolor(chart_bg_color)
+            
             # Update title color
             ax.set_title(title, color=text_color, fontsize=9)
             
@@ -1934,6 +2064,9 @@ class ProcessMonitorApp:
                 
             # Update grid color
             ax.grid(True, which='major', color=grid_color, linestyle='--', linewidth=0.5, alpha=0.6)
+            
+            # Update line color
+            line.set_color(color)
             
             # Update axis labels color
             if ax == self.disk_ax:
