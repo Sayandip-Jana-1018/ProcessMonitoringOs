@@ -1853,36 +1853,48 @@ class MiddleSection:
     def kill_selected_process(self):
         """Kill the selected process after confirmation"""
         try:
+            # Check if any item is selected
+            selected_items = self.tree.selection()
+            if not selected_items:
+                messagebox.showwarning("Warning", "Please select a process to terminate.")
+                return
+                
             # Get the selected item from the tree view
-            selected_item = self.tree.selection()[0]
+            selected_item = selected_items[0]
             
+            # Get the values from the selected item
+            values = self.tree.item(selected_item, "values")
+            if not values or len(values) < 2:
+                messagebox.showwarning("Warning", "Invalid process selection.")
+                return
+                
             # Get the process ID and name from the selected item
-            pid = int(self.tree.item(selected_item, "values")[0])
-            process_name = self.tree.item(selected_item, "values")[1]
+            pid = int(values[0])
+            process_name = values[1]
+            
+            # Store the selected process in the app for reference
+            if hasattr(self, 'app') and self.app is not None:
+                self.app.selected_process = [pid, process_name]
+                print(f"Selected process: {[pid, process_name]}")
             
             # Confirm termination
             if messagebox.askyesno("Confirm", f"Are you sure you want to terminate process {pid} ({process_name})?"):
                 try:
-                    # Attempt to terminate the process
-                    process = psutil.Process(pid)
-                    process.terminate()
+                    # Use the utility function from process_utils for better error handling
+                    from utils.process_utils import kill_process
+                    success, message = kill_process(pid)
                     
-                    # Wait for process to terminate or force kill
-                    try:
-                        process.wait(timeout=3)
-                    except psutil.TimeoutExpired:
-                        process.kill()
-                    
-                    # Update the process list
+                    # Always update the process list
                     self.update_process_list()
-
-                    # Provide feedback
-                    messagebox.showinfo("Success", f"Process {pid} ({process_name}) has been terminated.")
-                except psutil.NoSuchProcess:
-                    messagebox.showerror("Error", f"Process {pid} no longer exists.")
+                    
+                    # Provide feedback based on success
+                    if success:
+                        messagebox.showinfo("Success", f"Process {pid} ({process_name}) has been terminated.")
+                    else:
+                        messagebox.showerror("Error", message)
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to terminate process: {str(e)}")
                     self.update_process_list()  # Refresh anyway
-                except psutil.AccessDenied:
-                    messagebox.showerror("Error", f"Access denied when trying to terminate process {pid}. Try running as administrator.")
         except ValueError as e:
             messagebox.showerror("Error", f"Invalid process ID: {str(e)}")
         except Exception as e:
