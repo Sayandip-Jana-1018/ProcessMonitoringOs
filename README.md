@@ -1,9 +1,6 @@
-<<<<<<< HEAD
 # Real-Time Process Monitoring Dashboard
-=======
-### **Project Title: Real Time Process Monitoring Dashboard**
-- Authors: Sayandip Jana, Mohit Kumar Mishra, Anurag Pandey
->>>>>>> 6a1e359 (Final Updated Project)
+
+### Authors: Sayandip Jana, Mohit Kumar Mishra, Anurag Pandey
 
 A sophisticated, feature-rich system monitoring application built with Python that provides real-time insights into system performance with AI-powered analytics.
 
@@ -292,15 +289,6 @@ Users can customize various aspects of the application:
 - Mohit Kumar Mishra
 - Anurag Pandey
 
-## 📝 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
----
-
-<<<<<<< HEAD
-*Built with ❤️ and Python*
-=======
 ### Innovative Enhancements
 Beyond the basics, consider these innovative additions:
 - **Process Grouping**: Group processes by application or user in the `Treeview` for better organization.  
@@ -959,4 +947,3 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = ProcessMonitorApp(root)
     root.mainloop()
->>>>>>> 6a1e359 (Final Updated Project)
