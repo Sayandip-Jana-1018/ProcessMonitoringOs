@@ -4,7 +4,9 @@
 
 A sophisticated, feature-rich system monitoring application built with Python that provides real-time insights into system performance with AI-powered analytics.
 
-![Dashboard Screenshot](https://github.com/user-attachments/assets/0b60728d-59d7-4ea0-b62a-00d32fe18770)
+![image](https://github.com/user-attachments/assets/69114713-f377-48ba-8ede-43aef7a6ff74)
+![image](https://github.com/user-attachments/assets/e2daa376-c659-4a31-9acc-c8460f338d8a)
+
 
 ## Features
 
