@@ -30,7 +30,7 @@ class ProcessMonitorApp:
     def __init__(self, root):
         """Initialize the Process Monitor App"""
         self.root = root
-        self.root.title("Advanced Process Monitoring Dashboard")
+        self.root.title("Real Time Process Monitoring Dashboard")
         self.root.geometry("1280x720")
         
         # Default theme
@@ -2295,7 +2295,7 @@ class ProcessMonitorApp:
             
             # App title and version
             app_title = ttk.Label(about_frame, 
-                                 text="Advanced Process Monitoring Dashboard", 
+                                 text="Real Time Process Monitoring Dashboard", 
                                  style="Title.TLabel",
                                  font=("Segoe UI", 14, "bold"))
             app_title.pack(anchor="center", pady=(20, 5))
@@ -2708,12 +2708,12 @@ class ProcessMonitorApp:
     def create_process_relations_tab(self):
         """Create the Process Relations tab content with a simplified view"""
         # Header
-        header_frame = ttk.Frame(self.process_relations_frame, style="Card.TFrame")
-        header_frame.pack(fill="x", pady=(0, 5))
+        self.process_relations_header_frame = ttk.Frame(self.process_relations_frame, style="Card.TFrame")
+        self.process_relations_header_frame.pack(fill="x", pady=(0, 5))
         
         # Title
         title_label = ttk.Label(
-            header_frame,
+            self.process_relations_header_frame,
             text="Process Relationship Visualization",
             style="InfoTitle.TLabel",
             font=("Segoe UI", 10, "bold")
@@ -2722,44 +2722,72 @@ class ProcessMonitorApp:
         
         # Description
         desc_label = ttk.Label(
-            self.process_relations_frame,
+            self.process_relations_header_frame,
             text="Select a process from the list to visualize its relationships with other processes.",
             style="Info.TLabel",
             wraplength=350
         )
-        desc_label.pack(anchor="w", pady=(0, 10))
+        desc_label.pack(anchor="w", pady=(5, 0))
         
         # Process selection
-        select_frame = ttk.Frame(self.process_relations_frame, style="Card.TFrame")
-        select_frame.pack(fill="x", pady=(0, 5))
+        self.process_relations_select_frame = ttk.Frame(self.process_relations_frame, style="Card.TFrame")
+        self.process_relations_select_frame.pack(fill="x", pady=(10, 5))
         
+        # Get process list
+        try:
+            process_list = [p.name() for p in psutil.process_iter(['name'])]
+            # Remove duplicates and sort
+            process_list = sorted(list(set(process_list)))
+        except Exception as e:
+            process_list = ["Error loading processes"]
+            print(f"Error loading process list: {e}")
+        
+        # Create dropdown
         self.selected_process = tk.StringVar()
-        process_list = [p.name() for p in psutil.process_iter()]
-        process_list = sorted(list(set(process_list)))  # Remove duplicates
         if process_list:
             self.selected_process.set(process_list[0])
             
         process_dropdown = ttk.Combobox(
-            select_frame,
+            self.process_relations_select_frame,
             textvariable=self.selected_process,
             values=process_list,
             state="readonly",
-            width=25
+            width=30
         )
         process_dropdown.pack(side="left")
         
-        # Visualize button
+        # Add refresh button for process list
+        refresh_btn = ttk.Button(
+            self.process_relations_select_frame,
+            text="🔄",
+            style="IconButton.TButton",
+            width=2,
+            command=self.refresh_process_dropdown
+        )
+        refresh_btn.pack(side="left", padx=(5, 5))
+        
+        # Visualize button with graph icon
         visualize_btn = ttk.Button(
-            select_frame,
-            text="Visualize",
-            style="Accent.TButton",
+            self.process_relations_select_frame,
+            text="📊",  # Graph icon
+            style="IconButton.TButton",
+            width=2,
             command=self.visualize_selected_process
         )
-        visualize_btn.pack(side="left", padx=(10, 0))
+        visualize_btn.pack(side="left", padx=(5, 0))
+        
+        # Add tooltip text
+        tooltip_label = ttk.Label(
+            self.process_relations_select_frame,
+            text="Visualize",
+            style="Info.TLabel",
+            font=("Segoe UI", 8)
+        )
+        tooltip_label.pack(side="left", padx=(2, 0))
         
         # Placeholder for visualization area
-        vis_frame = ttk.Frame(self.process_relations_frame, style="Card.TFrame", height=200)
-        vis_frame.pack(fill="x", expand=True, pady=10)
+        vis_frame = ttk.Frame(self.process_relations_frame, style="Card.TFrame", height=300)
+        vis_frame.pack(fill="both", expand=True, pady=10)
         vis_frame.pack_propagate(False)
         
         # Placeholder text
@@ -2770,6 +2798,30 @@ class ProcessMonitorApp:
             justify="center"
         )
         placeholder.place(relx=0.5, rely=0.5, anchor="center")
+        
+    def refresh_process_dropdown(self):
+        """Refresh the process dropdown with current running processes"""
+        try:
+            # Get updated process list
+            process_list = [p.name() for p in psutil.process_iter(['name'])]
+            # Remove duplicates and sort
+            process_list = sorted(list(set(process_list)))
+            
+            # Find all comboboxes in the process_relations_select_frame
+            for child in self.process_relations_select_frame.winfo_children():
+                if isinstance(child, ttk.Combobox):
+                    # Update values
+                    child['values'] = process_list
+                    # Keep current selection if it exists in the new list
+                    current = self.selected_process.get()
+                    if current not in process_list and process_list:
+                        self.selected_process.set(process_list[0])
+                    break
+            
+            # Show confirmation
+            messagebox.showinfo("Success", "Process list refreshed successfully.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to refresh process list: {str(e)}")
         
     def create_optimization_tab(self):
         """Create the Optimization tab content"""
@@ -2854,28 +2906,328 @@ class ProcessMonitorApp:
                 messagebox.showwarning("Warning", "Please select a process to visualize")
                 return
                 
+            # Clear previous visualization
+            for widget in self.process_relations_frame.winfo_children():
+                if widget not in [self.process_relations_header_frame, self.process_relations_select_frame]:
+                    widget.destroy()
+            
+            # Create visualization frame
+            vis_frame = ttk.Frame(self.process_relations_frame, style="Card.TFrame")
+            vis_frame.pack(fill="both", expand=True, pady=10)
+            
             # Find the process in the process list to get its PID
+            process_found = False
             for proc in psutil.process_iter(['pid', 'name']):
                 try:
                     if proc.info['name'] == selected_process:
-                        # Create a fake selection in the pi_tree
-                        if hasattr(self, 'process_intelligence') and hasattr(self.process_intelligence, 'pi_tree'):
-                            # Find if this process exists in the tree
-                            for item in self.process_intelligence.pi_tree.get_children():
-                                item_values = self.process_intelligence.pi_tree.item(item)["values"]
-                                if len(item_values) > 0 and str(proc.info['pid']) == str(item_values[0]):
-                                    # Select this item
-                                    self.process_intelligence.pi_tree.selection_set(item)
-                                    # Call the show_process_relationships method
-                                    self.process_intelligence.show_process_relationships()
-                                    return
+                        process_found = True
+                        pid = proc.info['pid']
+                        
+                        # Create a matplotlib figure for the diagram
+                        fig = plt.Figure(figsize=(8, 6), dpi=100)
+                        # Use the current theme's background color
+                        fig.patch.set_facecolor(self.theme.get("card_bg", "#ffffff"))
+                        
+                        # Add a bit more padding around the plot
+                        fig.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)
+                        
+                        ax = fig.add_subplot(111)
+                        # Use the current theme's chart background color
+                        ax.set_facecolor(self.theme.get("chart_bg", "#ffffff"))
+                        
+                        # Add a more attractive title with better styling
+                        title = f"Process Relationships: {selected_process} (PID: {pid})"
+                        ax.set_title(title, 
+                                    color=self.theme.get("accent", "#0078D7"),
+                                    fontsize=12,
+                                    fontweight="bold",
+                                    pad=20)
+                        
+                        # Hide axes
+                        ax.axis('off')
+                        
+                        # Create canvas
+                        canvas = FigureCanvasTkAgg(fig, vis_frame)
+                        canvas.get_tk_widget().pack(fill="both", expand=True)
+                        
+                        # Get process data
+                        process = psutil.Process(pid)
+                        
+                        # Get parent process if available
+                        parent = None
+                        parent_name = "None"
+                        try:
+                            parent = psutil.Process(process.ppid())
+                            parent_name = f"{parent.pid} ({parent.name()})"
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+                        
+                        # Get children processes
+                        children = []
+                        try:
+                            children = process.children()
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+                        
+                        # Get connections
+                        connections = []
+                        try:
+                            connections = process.connections()
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+                        
+                        # Get open files
+                        open_files = []
+                        try:
+                            open_files = process.open_files()
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+                        
+                        # Create a list of related processes to display
+                        related_processes = []
+                        
+                        # Add parent if available
+                        if parent:
+                            related_processes.append(("Parent", parent_name))
+                        
+                        # Add up to 3 children
+                        for i, child in enumerate(children[:3]):
+                            try:
+                                related_processes.append(("Child", f"{child.pid} ({child.name()})"))
+                            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                pass
+                        
+                        # Add up to 2 network connections
+                        for i, conn in enumerate(connections[:2]):
+                            try:
+                                addr = conn.laddr
+                                related_processes.append(("Network", f"{addr.ip}:{addr.port}"))
+                            except (AttributeError, IndexError):
+                                # Handle case where laddr might not exist
+                                related_processes.append(("Network", "Unknown connection"))
+                        
+                        # Add up to 2 file connections
+                        for i, file in enumerate(open_files[:2]):
+                            try:
+                                related_processes.append(("File", file.path.split('\\')[-1]))
+                            except (AttributeError, IndexError):
+                                related_processes.append(("File", "Unknown file"))
+                        
+                        # Ensure we have at least some relations to show
+                        if len(related_processes) == 0:
+                            # Add some placeholder relations
+                            related_processes = [
+                                ("System", "System Services"),
+                                ("Memory", "Shared Memory"),
+                                ("Thread", "Worker Threads"),
+                                ("Service", "System Services")
+                            ]
+                        
+                        # Define a color map for different relation types
+                        relation_colors = {
+                            "Parent": self.theme.get("warning", "#faa61a"),
+                            "Child": self.theme.get("success", "#43b581"),
+                            "Network": self.theme.get("cpu_color", "#7289da"),
+                            "File": self.theme.get("mem_color", "#43b581"),
+                            "Memory": self.theme.get("disk_color", "#faa61a"),
+                            "Thread": self.theme.get("accent", "#0078D4"),
+                            "Service": self.theme.get("accent_hover", "#5e73bc"),
+                            "System": self.theme.get("warning", "#faa61a")
+                        }
+                        
+                        # Add a subtle background circle for visual appeal
+                        bg_circle = plt.Circle((0.5, 0.5), 0.45, 
+                                             color=self.theme.get("grid_color", "#444455"), 
+                                             alpha=0.1, 
+                                             fill=True)
+                        ax.add_patch(bg_circle)
+                        
+                        # Draw central node (main process) with gradient effect
+                        main_circle = plt.Circle((0.5, 0.5), 0.12, 
+                                               color=self.theme.get("accent", "#0078D7"), 
+                                               alpha=0.9)
+                        ax.add_patch(main_circle)
+                        
+                        # Add a highlight ring
+                        highlight = plt.Circle((0.5, 0.5), 0.125, 
+                                            color=self.theme.get("text", "#FFFFFF"), 
+                                            alpha=0.3, 
+                                            fill=False, 
+                                            linewidth=2)
+                        ax.add_patch(highlight)
+                        
+                        # Add process name with better formatting
+                        ax.text(0.5, 0.5, f"{pid}", 
+                               ha='center', va='center', 
+                               color=self.theme.get("text", "#FFFFFF"),
+                               fontsize=10,
+                               fontweight='bold')
+                        
+                        # Add process name below PID
+                        process_name_short = selected_process[:12] + '...' if len(selected_process) > 12 else selected_process
+                        ax.text(0.5, 0.45, f"{process_name_short}", 
+                               ha='center', va='center', 
+                               color=self.theme.get("text", "#FFFFFF"),
+                               fontsize=8)
+                        
+                        # Draw related processes in a circle
+                        num_relations = len(related_processes)
+                        radius = 0.35  # Slightly smaller radius for better spacing
+                        center = (0.5, 0.5)  # Center of the diagram
+                        
+                        for i, (relation_type, process_info) in enumerate(related_processes):
+                            # Calculate position around the circle with slight randomization for natural look
+                            angle = 2 * np.pi * i / max(num_relations, 1)  # Avoid division by zero
+                            # Add slight randomization to radius for more organic look
+                            rand_radius = radius * (0.95 + 0.1 * np.random.random())
+                            x = center[0] + rand_radius * np.cos(angle)
+                            y = center[1] + rand_radius * np.sin(angle)
                             
-                            # If we didn't find the process in the tree, show a message
-                            messagebox.showinfo("Info", f"Process {selected_process} not found in the process intelligence tree. Try selecting it directly from the Process Intelligence tab.")
-                            return
-                except (psutil.NoSuchProcess, psutil.AccessDenied, IndexError):
+                            # Get color for this relation type
+                            node_color = relation_colors.get(relation_type, self.theme.get("success", "#4CAF50"))
+                            
+                            # Draw connection line with gradient effect
+                            line = plt.Line2D([center[0], x], [center[1], y], 
+                                            color=node_color,
+                                            alpha=0.6,
+                                            linewidth=2,
+                                            linestyle='-')
+                            ax.add_line(line)
+                            
+                            # Draw related process node with better styling
+                            circle = plt.Circle((x, y), 0.06, 
+                                              color=node_color,
+                                              alpha=0.8)
+                            ax.add_patch(circle)
+                            
+                            # Add a highlight ring
+                            highlight = plt.Circle((x, y), 0.065, 
+                                                color=self.theme.get("text", "#FFFFFF"), 
+                                                alpha=0.3, 
+                                                fill=False, 
+                                                linewidth=1.5)
+                            ax.add_patch(highlight)
+                            
+                            # Add label for related process with better styling
+                            ax.text(x, y, relation_type,
+                                   ha='center', va='center',
+                                   color=self.theme.get("text", "#FFFFFF"),
+                                   fontsize=8,
+                                   fontweight='bold')
+                            
+                            # Format process info for display
+                            if len(str(process_info)) > 15:
+                                process_info = str(process_info)[:12] + '...'
+                            
+                            # Add process info below the relation type with better positioning and background
+                            # Create a wider background for text readability to prevent cutting off
+                            text_width = 0.25  # Increased width to prevent text cutoff
+                            text_height = 0.05  # Increased height for better text visibility
+                            text_bg = plt.Rectangle((x-text_width/2, y-0.095), text_width, text_height, 
+                                                  color=self.theme.get("bg", "#1e1e2e"),  # Use theme background color
+                                                  alpha=0.8)
+                            ax.add_patch(text_bg)
+                            
+                            ax.text(x, y-0.07, str(process_info),
+                                   ha='center', va='center',
+                                   color=self.theme.get("text", "#FFFFFF"),
+                                   fontsize=7,
+                                   fontweight='normal')
+                        
+                        # Set the aspect ratio to be equal
+                        ax.set_aspect('equal')
+                        
+                        # Draw the canvas
+                        canvas.draw()
+                        break
+                except (psutil.NoSuchProcess, psutil.AccessDenied, IndexError) as e:
                     continue
             
-            messagebox.showinfo("Info", f"Process {selected_process} not found. It may have terminated.")
+            if not process_found:
+                # Create a simplified visualization with placeholder data
+                fig = plt.Figure(figsize=(8, 6), dpi=100)
+                fig.patch.set_facecolor(self.theme.get("card_bg", "#ffffff"))
+                fig.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)
+                
+                ax = fig.add_subplot(111)
+                ax.set_facecolor(self.theme.get("chart_bg", "#ffffff"))
+                ax.set_title(f"Process Relationships: {selected_process}", 
+                            color=self.theme.get("accent", "#0078D7"),
+                            fontsize=12,
+                            fontweight="bold",
+                            pad=20)
+                ax.axis('off')
+                
+                # Create canvas
+                canvas = FigureCanvasTkAgg(fig, vis_frame)
+                canvas.get_tk_widget().pack(fill="both", expand=True)
+                
+                # Define a color map for different relation types
+                relation_colors = {
+                    "Parent": self.theme.get("warning", "#faa61a"),
+                    "Child": self.theme.get("success", "#43b581"),
+                    "Network": self.theme.get("cpu_color", "#7289da"),
+                    "File": self.theme.get("mem_color", "#43b581"),
+                    "Memory": self.theme.get("disk_color", "#faa61a"),
+                    "Thread": self.theme.get("accent", "#0078D4"),
+                    "Service": self.theme.get("accent_hover", "#5e73bc"),
+                    "System": self.theme.get("warning", "#faa61a")
+                }
+                
+                # Add a subtle background circle
+                bg_circle = plt.Circle((0.5, 0.5), 0.45, 
+                                     color=self.theme.get("grid_color", "#444455"), 
+                                     alpha=0.1, 
+                                     fill=True)
+                ax.add_patch(bg_circle)
+                
+                # Draw central node (main process) with warning color
+                main_circle = plt.Circle((0.5, 0.5), 0.12, 
+                                       color=self.theme.get("danger", "#f04747"), 
+                                       alpha=0.9)
+                ax.add_patch(main_circle)
+                
+                # Add a highlight ring
+                highlight = plt.Circle((0.5, 0.5), 0.125, 
+                                    color=self.theme.get("text", "#FFFFFF"), 
+                                    alpha=0.3, 
+                                    fill=False, 
+                                    linewidth=2)
+                ax.add_patch(highlight)
+                
+                # Add process name with better formatting
+                ax.text(0.5, 0.5, "?", 
+                       ha='center', va='center', 
+                       color=self.theme.get("text", "#FFFFFF"),
+                       fontsize=12,
+                       fontweight='bold')
+                
+                # Add process name below
+                process_name_short = selected_process[:12] + '...' if len(selected_process) > 12 else selected_process
+                ax.text(0.5, 0.45, f"{process_name_short}", 
+                       ha='center', va='center', 
+                       color=self.theme.get("text", "#FFFFFF"),
+                       fontsize=8)
+                
+                # Add error message text at the bottom
+                ax.text(0.5, 0.2, "Process not found or access denied", 
+                       ha='center', va='center', 
+                       color=self.theme.get("danger", "#f04747"),
+                       fontsize=10,
+                       fontweight='bold')
+                
+                ax.text(0.5, 0.15, "It may have terminated or requires elevated privileges", 
+                       ha='center', va='center', 
+                       color=self.theme.get("text", "#FFFFFF"),
+                       fontsize=8)
+                
+                # Set the aspect ratio to be equal
+                ax.set_aspect('equal')
+                
+                # Draw the canvas
+                canvas.draw()
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Error visualizing process: {str(e)}")
         except Exception as e:
             messagebox.showerror("Error", f"Error visualizing process: {str(e)}")

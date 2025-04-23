@@ -200,16 +200,14 @@ class TopSection:
         
         collection_label = ttk.Label(collection_frame, 
                                text="Data Collection:",
-                               font=("Consolas", 9, "bold"),  # Monospace font for terminal-style logs
-                               foreground=self.theme["text"],
-                               background=self.theme["chart_bg"])
+                               font=("Segoe UI", 9, "bold"),
+                               style="AI.TLabel")
         collection_label.pack(anchor="center")
         
         self.collection_time = ttk.Label(collection_frame, 
                                        text="0.0 mins",
                                        font=("Consolas", 9),  # Monospace font for terminal-style logs
-                                       foreground=self.theme["text"],
-                                       background=self.theme["chart_bg"])
+                                       style="AI.TLabel")
         self.collection_time.pack(anchor="center")
 
         # Model Training Status
@@ -220,15 +218,13 @@ class TopSection:
         training_label = ttk.Label(training_frame, 
                               text="Model Training:",
                               font=("Segoe UI", 9, "bold"),
-                              foreground=self.theme["text"],
-                              background=self.theme["chart_bg"])
+                              style="AI.TLabel")
         training_label.pack(anchor="center")
         
         self.training_status = ttk.Label(training_frame, 
                                     text="[INIT] Waiting for data...",
                                     font=("Consolas", 9),  # Monospace font for terminal-style logs
-                                    foreground=self.theme["text"],
-                                    background=self.theme["chart_bg"])
+                                    style="AI.TLabel")
         self.training_status.pack(anchor="center")
 
         # Prediction Status
@@ -239,15 +235,13 @@ class TopSection:
         prediction_label = ttk.Label(prediction_frame, 
                                     text="AI Status:",
                                     font=("Segoe UI", 9, "bold"),
-                                    foreground=self.theme["text"],
-                                    background=self.theme["chart_bg"])
+                                    style="AI.TLabel")
         prediction_label.pack(anchor="center")
         
         self.prediction_status = ttk.Label(prediction_frame, 
                                           text="Waiting for training...",
                                           font=("Segoe UI", 9),
-                                          foreground=self.theme["text"],
-                                          background=self.theme["chart_bg"])
+                                          style="AI.TLabel")
         self.prediction_status.pack(anchor="center")
 
         # Buttons with equal spacing and center alignment
@@ -2405,16 +2399,33 @@ class MiddleSection:
                 
                 # Add up to 2 network connections
                 for i, conn in enumerate(connections[:2]):
-                    addr = conn.laddr
-                    related_processes.append(("Network", f"{addr.ip}:{addr.port}"))
+                    try:
+                        addr = conn.laddr
+                        related_processes.append(("Network", f"{addr.ip}:{addr.port}"))
+                    except (AttributeError, IndexError):
+                        # Handle case where laddr might not exist
+                        related_processes.append(("Network", "Unknown connection"))
                 
                 # Add up to 2 file connections
                 for i, file in enumerate(open_files[:2]):
-                    related_processes.append(("File", file.path.split('\\')[-1]))
+                    try:
+                        related_processes.append(("File", file.path.split('\\')[-1]))
+                    except (AttributeError, IndexError):
+                        related_processes.append(("File", "Unknown file"))
                 
                 # Fill remaining slots with placeholders if needed
                 relation_types = ["Memory", "Thread", "Service"]
                 i = 0
+                
+                # Ensure we have at least some relations to show
+                if len(related_processes) == 0:
+                    # Add some placeholder relations
+                    related_processes = [
+                        ("System", "System Services"),
+                        ("Memory", "Shared Memory"),
+                        ("Thread", "Worker Threads"),
+                        ("Service", "System Services")
+                    ]
                 
                 # Draw central node (main process)
                 circle = plt.Circle((0.5, 0.5), 0.1, color=self.theme.get("accent", "#0078D7"), alpha=0.7)
@@ -2430,7 +2441,8 @@ class MiddleSection:
                 center = (0.5, 0.5)  # Center of the diagram
                 
                 for i, (relation_type, process_info) in enumerate(related_processes):
-                    angle = 2 * np.pi * i / num_relations
+                    # Calculate position around the circle
+                    angle = 2 * np.pi * i / max(num_relations, 1)  # Avoid division by zero
                     x = center[0] + radius * np.cos(angle)
                     y = center[1] + radius * np.sin(angle)
                     
@@ -2453,7 +2465,7 @@ class MiddleSection:
                            fontsize=8)
                     
                     # Add process info below the relation type
-                    ax.text(x, y + 0.07, str(process_info)[:15],
+                    ax.text(x, y - 0.07, str(process_info)[:15],
                            ha='center', va='center',
                            color=self.theme.get("text", "#000000"),
                            fontsize=7)
